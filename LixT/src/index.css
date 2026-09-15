@@ -1,0 +1,28 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  outline: none;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: #0a0c12;
+  overflow: hidden;
+}
+
+/* El ojo de "mostrar contraseña" lo pinta el propio WebView2 (Edge) y viene en
+   negro, así que sobre el fondo oscuro de LixT no se veía. `invert` lo pasa a
+   blanco. `::-ms-reveal` es el de Edge/WebView2, que es lo que usa Tauri en
+   Windows; el resto de navegadores no dibujan ninguno. */
+input[type="password"]::-ms-reveal {
+  filter: invert(1);
+  cursor: pointer;
+  opacity: 0.75;
+}
+input[type="password"]::-ms-reveal:hover {
+  opacity: 1;
+}

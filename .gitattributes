@@ -1,0 +1,8 @@
+# El repo guarda LF. Sin esto, Windows mete CRLF y `check-shared.mjs`
+# y los diffs se llenan de ruido de finales de linea.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary
+*.svg text

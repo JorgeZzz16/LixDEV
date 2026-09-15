@@ -1,0 +1,40 @@
+# Se ejecuta en cada push. Comprueba las tres cosas que no se ven a simple vista:
+#
+#   1. Que `logic.js` y `sync.js` siguen siendo idénticos entre el PC y el móvil.
+#      Es el invariante que más veces se ha roto, y a mano solo lo protege acordarse.
+#   2. Que no hay variables inexistentes ni hooks después de un return condicional
+#      (esto último ya tumbaba la app en el primer arranque una vez).
+#   3. Que los tests de notas y de sincronización siguen pasando.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  comprobar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Dependencias del PC
+        working-directory: LixT
+        run: npm ci
+
+      # `npm run check` = archivos compartidos idénticos + ESLint + tests
+      - name: Comprobar el PC
+        working-directory: LixT
+        run: npm run check
+
+      - name: Dependencias del móvil
+        working-directory: lixt-movil
+        run: npm ci
+
+      - name: Comprobar el móvil
+        working-directory: lixt-movil
+        run: npm run lint

@@ -1,0 +1,29 @@
+# ─── Dependencias y artefactos de compilación ──────────────────────────────────
+node_modules/
+dist/
+build/
+web-build/
+.expo/
+
+# Tauri: `target` son 5,5 GB de objetos de Rust. Se regenera con `npm run tauri build`.
+LixT/src-tauri/target/
+LixT/src-tauri/gen/
+
+# ─── Datos, no código ──────────────────────────────────────────────────────────
+# Copias de seguridad con notas, sesiones y asignaturas reales. La app las genera
+# sola al cerrar; no tienen por qué acabar en el historial de git.
+LixT/BACKUP/
+
+# Base de conocimiento (notas personales del proyecto). Fuera a propósito: este
+# repo es el código. Si algún día quieres versionarla, repo aparte.
+claude-obsidian/
+
+# ─── Local de cada máquina ─────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+.env
+.env.local
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

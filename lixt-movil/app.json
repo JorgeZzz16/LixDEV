@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "LixT",
+    "slug": "lixt-movil",
+    "version": "1.4.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lixt.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0c12",
+        "foregroundImage": "./assets/icon.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.lixt.app"
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7531ec56-ca93-4d2d-a0e9-307f431616f6"
+      }
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0a0c12"
+        }
+      ]
+    ]
+  }
+}
