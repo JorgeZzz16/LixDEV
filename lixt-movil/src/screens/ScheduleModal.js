@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Modal, View, Text, TouchableOpacity, Pressable, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
-import { D } from "../theme";
+import { D, botonPrimario, botonSecundario, botonPeligro, VELO } from "../theme";
 import { TimeField } from "./DateTimeField";
 
 const DAYS = ["Lu","Ma","Mi","Ju","Vi","Sá","Do"];
@@ -32,7 +32,7 @@ export default function ScheduleModal({ visible, slot, subjects, day, onClose, o
 
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: "#000a", justifyContent: "flex-end" }} onPress={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: VELO, justifyContent: "flex-end" }} onPress={onClose}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 28 }}>
 
@@ -81,14 +81,14 @@ export default function ScheduleModal({ visible, slot, subjects, day, onClose, o
             <View style={{ flexDirection: "row", gap: 10 }}>
               {slot && (
                 <TouchableOpacity onPress={() => onDelete(slot.id)}
-                  style={{ paddingVertical: 13, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: D.red + "44", backgroundColor: D.red + "11" }}>
+                  style={botonPeligro()}>
                   <Text style={{ color: D.red, fontSize: 14 }}>Eliminar</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={onClose} style={{ flex: 1, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: D.border, alignItems: "center" }}>
+              <TouchableOpacity onPress={onClose} style={botonSecundario()}>
                 <Text style={{ color: D.muted, fontSize: 14 }}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={save} style={{ flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: D.accent, alignItems: "center" }}>
+              <TouchableOpacity onPress={save} style={botonPrimario()}>
                 <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>Guardar</Text>
               </TouchableOpacity>
             </View>

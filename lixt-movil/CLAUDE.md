@@ -20,16 +20,27 @@ Lee `hot.md` primero, luego `index.md` si no basta.
   igual y verifica con `diff`.
 - **Los ids son texto/UUID.** Nunca compares con `Number()`, ni con `<`/`>` para
   saber cuál es más nuevo — eso funcionaba con `Date.now()` y ahora es una
-  comparación de texto. Para "más reciente" usa `updated_at` o el orden del array.
+  comparación de texto. Para "más reciente" usa `updated_at`.
+- **El orden de los arrays NO significa nada después de sincronizar.**
+  `mergeById` (sync.js) reconstruye cada lista desde un `Map` sembrado con las
+  filas remotas, y esas llegan de un `select *` sin `ORDER BY`. Para "lo más
+  reciente" ORDENA A MANO por el campo que toque (`date`, `dueDate`,
+  `updated_at`); nunca `slice(-n)`, `.at(-1)` ni `[length - 1]`. Bug real: las
+  "Sesiones recientes" del PC enseñaban seis sesiones cualesquiera de hace meses.
 - **`COLORS` en `src/constants.js` debe coincidir con la del PC** (`App.jsx`). Un
   color que solo exista en un lado no se puede reelegir desde el otro.
 - **El móvil no edita el modo de calificación** (`gradeMode` / `pts`): al guardar
   una tarea hay que conservarlos. Si envía `pct`/`null`, gana por `updated_at` y
   el PC pierde los puntos extra sin avisar.
-- **`settings` es UN SOLO blob JSON compartido con el PC y `sync.js` lo reemplaza
-  entero.** El móvil solo entiende una parte (notas y fondo), así que al guardar
-  mezcla sobre lo que ya había (`updateSettings`). Si subiera solo sus claves,
-  borraría las duraciones del timer, `examCount` y `showEmptyDays` del ordenador.
+- **`settings` es UN SOLO blob JSON compartido con el PC.** Cada app entiende solo
+  una parte, así que hay DOS mezclas y las dos hacen falta:
+  1. Al guardar en el móvil, `updateSettings` mezcla sobre lo que ya había. Si
+     subiera solo sus claves borraría las duraciones del timer, `examCount` y
+     `showEmptyDays` del ordenador.
+  2. Al subir, `syncAll` mezcla sobre el blob remoto antes del `upsert`. El PC
+     manda un objeto literal con sus 8 claves, así que sin esto borraba las que
+     solo entiende el móvil (`notifyReminders`, `notifyHour`) en cuanto
+     sincronizaba.
 - **El móvil solo sube ajustes si los has tocado en el móvil** (`settingsDirty`).
   Si no, manda el PC: sin ese flag cada sincronización pisaría los del ordenador.
 - **Las notas se guardan SIEMPRE en 0–10**, en las dos apps y en Supabase. La
@@ -81,9 +92,21 @@ Lee `hot.md` primero, luego `index.md` si no basta.
 ```
 npx esbuild src/screens/ARCHIVO.js --loader:.js=jsx --bundle \
   --external:react --external:react-native --external:react-native-svg \
-  --external:@react-native-community/* --external:@supabase/* \
+  --external:expo-* --external:@react-native-community/* --external:@supabase/* \
   --external:@react-native-async-storage/* --external:react-native-url-polyfill \
   --format=esm --outfile=/dev/null
+```
+
+`--external:expo-*` hace falta para `App.js` y para cualquier archivo que acabe
+llegando a `notifications.js`: esbuild sigue el `import()` de `expo-notifications`
+y casca con "Could not resolve expo-modules-core". Metro sí lo resuelve — es ruido
+de esbuild, no un error de verdad.
+
+Esto solo dice que el archivo compila. Para comprobarlo de verdad, el bundle
+entero tal y como lo hará el móvil:
+
+```
+npx expo export --platform android --output-dir <carpeta temporal>
 ```
 
 ## Compilación del APK

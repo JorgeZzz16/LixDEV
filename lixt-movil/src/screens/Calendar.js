@@ -1,14 +1,25 @@
 import React, { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
-import { getDaysInMonth, getFirstDay, pad, today, touch, softDelete, newId, bySubjectOrder, shiftMonth } from "../logic";
-import { D } from "../theme";
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Modal, Pressable } from "react-native";
+import { getDaysInMonth, getFirstDay, pad, today, touch, softDelete, newId, bySubjectOrder, shiftMonth, parseDate } from "../logic";
+import { D, VELO } from "../theme";
 import TaskModal from "./TaskModal";
 
 const MONTHS = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const WDAYS  = ["L","M","X","J","V","S","D"];
+const WDAYS_LARGO = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
 
-// Una rejilla de mes. El indicador de tareas son puntos de 7px (antes 4, que en
-// un teléfono no se veían) y, si hay más de tres, un "+N" en vez de perderlas.
+// "2026-09-16" → "miércoles, 16 de septiembre". Con parseDate, que no se desplaza
+// de día por la zona horaria (new Date("2026-09-16") sí lo haría).
+function fechaLarga(ds) {
+  const d = parseDate(ds);
+  if (isNaN(d)) return "";
+  return `${WDAYS_LARGO[(d.getDay() + 6) % 7]}, ${d.getDate()} de ${MONTHS[d.getMonth()]}`;
+}
+
+// Una rejilla de mes. Los días con tareas se marcan con un recuadro del color de
+// la asignatura, que se ve de un vistazo mucho mejor que los puntos que había
+// antes. Un día solo tiene un recuadro, así que si hay varias tareas manda la
+// primera pendiente (y si están todas hechas, se atenúa).
 function Mes({ year, month, subjects, dayTasks, todayStr, selectedDay, onSelect }) {
   const firstOffset = (getFirstDay(year, month) + 6) % 7;
   const daysIn = getDaysInMonth(year, month);
@@ -26,24 +37,21 @@ function Mes({ year, month, subjects, dayTasks, todayStr, selectedDay, onSelect 
           const pendientes = dt.filter(t => t.status !== "completada").length;
           const isToday = ds === todayStr;
           const isSelected = ds === selectedDay;
+          // El recuadro: color de la asignatura de la primera tarea pendiente (o de
+          // la primera que haya, atenuado, si ya están todas hechas). Si no hay
+          // ninguna tarea manda "hoy", con el acento. Sin tareas ni hoy, sin borde.
+          const marca = dt.find(t => t.status !== "completada") || dt[0];
+          const colorMarca = marca && (subjects.find(x => x.id === marca.subjectId)?.color || D.muted);
+          const borde = colorMarca ? (pendientes ? colorMarca : colorMarca + "59") : (isToday ? D.accent : null);
           return (
             <TouchableOpacity key={day} onPress={() => onSelect(isSelected ? null : ds)}
               style={{ width: "14.28%", aspectRatio: 1, padding: 2 }}>
               <View style={{
                 flex: 1, borderRadius: 8, alignItems: "center", justifyContent: "center",
                 backgroundColor: isSelected ? D.accent + "33" : isToday ? D.accent + "18" : "transparent",
-                borderWidth: isToday ? 1.5 : 0, borderColor: D.accent,
+                borderWidth: borde ? 1.5 : 0, borderColor: borde || D.accent,
               }}>
                 <Text style={{ color: isToday ? D.accent : D.text, fontSize: 14, fontWeight: isToday || pendientes ? "700" : "400" }}>{day}</Text>
-                {dt.length > 0 && (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 3 }}>
-                    {dt.slice(0, 3).map(t => {
-                      const s = subjects.find(x => x.id === t.subjectId);
-                      return <View key={t.id} style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: s?.color || D.muted, opacity: t.status === "completada" ? 0.35 : 1 }} />;
-                    })}
-                    {dt.length > 3 && <Text style={{ color: D.muted, fontSize: 9, fontWeight: "700" }}>+{dt.length - 3}</Text>}
-                  </View>
-                )}
               </View>
             </TouchableOpacity>
           );
@@ -58,6 +66,10 @@ export default function CalendarScreen({ data, sync, syncing, mutate }) {
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear]   = useState(now.getFullYear());
   const [selectedDay, setSelectedDay] = useState(null); // fecha "YYYY-MM-DD" seleccionada
+  // El popup del día. Va aparte de `selectedDay` porque al abrir el modal de una
+  // tarea hay que cerrar el popup pero SEGUIR sabiendo de qué día era: TaskModal
+  // lo necesita como `initialDate`.
+  const [diaAbierto, setDiaAbierto] = useState(false);
   const [editingTask, setEditingTask] = useState(undefined); // undefined=cerrado, null=nueva, obj=editar
   const [taskSubjId, setTaskSubjId]   = useState(null);
   const [taskType, setTaskType]       = useState("tarea");
@@ -92,13 +104,20 @@ export default function CalendarScreen({ data, sync, syncing, mutate }) {
   function newTaskForDay() {
     setTaskSubjId(activas[0]?.id ?? null);
     setTaskType("tarea");
+    setDiaAbierto(false);
     setEditingTask(null);
   }
   // Recordatorio suelto: sin asignatura, así que no hace falta tener ninguna
   function newReminderForDay() {
     setTaskSubjId(null);
     setTaskType("recordatorio");
+    setDiaAbierto(false);
     setEditingTask(null);
+  }
+  // Tocar el mismo día otra vez lo deselecciona, así que `ds` puede venir null.
+  function abrirDia(ds) {
+    setSelectedDay(ds);
+    setDiaAbierto(!!ds);
   }
 
   return (
@@ -111,42 +130,54 @@ export default function CalendarScreen({ data, sync, syncing, mutate }) {
         </View>
 
         <Mes year={year}  month={month} subjects={data.subjects} dayTasks={dayTasks}
-          todayStr={todayStr} selectedDay={selectedDay} onSelect={setSelectedDay} />
+          todayStr={todayStr} selectedDay={selectedDay} onSelect={abrirDia} />
 
         <Text style={{ color: D.muted, fontSize: 13, fontWeight: "600", textAlign: "center", textTransform: "capitalize", marginTop: 18, marginBottom: 6 }}>
           {MONTHS[mes2]} {anio2}
         </Text>
         <Mes year={anio2} month={mes2} subjects={data.subjects} dayTasks={dayTasks}
-          todayStr={todayStr} selectedDay={selectedDay} onSelect={setSelectedDay} />
+          todayStr={todayStr} selectedDay={selectedDay} onSelect={abrirDia} />
 
-        {/* Detalle del día seleccionado */}
-        {selectedDay && (
-          <View style={{ marginTop: 18 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-              <Text style={{ color: D.muted, fontSize: 13, flex: 1 }}>{selectedDay}</Text>
+      </ScrollView>
+
+      {/* Detalle del día, en popup. Antes era una sección al final del scroll y
+          había que bajar a buscarla después de tocar un día de arriba. */}
+      <Modal visible={diaAbierto} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDiaAbierto(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: VELO, justifyContent: "center", padding: 22 }} onPress={() => setDiaAbierto(false)}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderRadius: 18, padding: 18, maxHeight: "80%" }}>
+            <Text style={{ color: D.text, fontSize: 17, fontWeight: "700", textTransform: "capitalize" }}>{fechaLarga(selectedDay)}</Text>
+            <Text style={{ color: D.muted, fontSize: 12, marginTop: 2, marginBottom: 14 }}>
+              {selectedTasks.length === 0
+                ? "Sin actividades"
+                : selectedTasks.length + (selectedTasks.length === 1 ? " actividad" : " actividades")}
+            </Text>
+
+            <ScrollView style={{ flexGrow: 0 }}>
+              {selectedTasks.map(t => {
+                const s = data.subjects.find(x => x.id === t.subjectId);
+                return (
+                  <TouchableOpacity key={t.id} onPress={() => { setDiaAbierto(false); setEditingTask(t); }}
+                    style={{ backgroundColor: D.card2, borderLeftWidth: 3, borderLeftColor: s?.color || D.muted, borderRadius: 8, padding: 11, marginBottom: 6 }}>
+                    <Text style={{ color: t.status === "completada" ? D.muted : D.text, fontSize: 13, fontWeight: "500", textDecorationLine: t.status === "completada" ? "line-through" : "none" }}>{t.title}</Text>
+                    <Text style={{ color: D.muted, fontSize: 11, marginTop: 2 }}>{s?.name || "Sin asignatura"}{t.hour ? " · " + t.hour : ""}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
               <TouchableOpacity onPress={newReminderForDay}
-                style={{ backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginRight: 6 }}>
-                <Text style={{ color: D.text, fontSize: 12, fontWeight: "600" }}>+ Recordatorio</Text>
+                style={{ flex: 1, backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, paddingVertical: 11, borderRadius: 9, alignItems: "center" }}>
+                <Text style={{ color: D.text, fontSize: 13, fontWeight: "600" }}>+ Recordatorio</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={newTaskForDay} disabled={!activas.length}
-                style={{ backgroundColor: activas.length ? D.accent : D.card2, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 }}>
-                <Text style={{ color: activas.length ? "#fff" : D.muted, fontSize: 12, fontWeight: "600" }}>+ Tarea</Text>
+                style={{ flex: 1, backgroundColor: activas.length ? D.accent : D.card2, paddingVertical: 11, borderRadius: 9, alignItems: "center" }}>
+                <Text style={{ color: activas.length ? "#fff" : D.muted, fontSize: 13, fontWeight: "600" }}>+ Tarea</Text>
               </TouchableOpacity>
             </View>
-            {selectedTasks.length === 0 && <Text style={{ color: D.muted, fontSize: 12 }}>Sin actividades este día.</Text>}
-            {selectedTasks.map(t => {
-              const s = data.subjects.find(x => x.id === t.subjectId);
-              return (
-                <TouchableOpacity key={t.id} onPress={() => setEditingTask(t)}
-                  style={{ backgroundColor: D.card2, borderLeftWidth: 3, borderLeftColor: s?.color || D.muted, borderRadius: 8, padding: 11, marginBottom: 6 }}>
-                  <Text style={{ color: t.status === "completada" ? D.muted : D.text, fontSize: 13, fontWeight: "500", textDecorationLine: t.status === "completada" ? "line-through" : "none" }}>{t.title}</Text>
-                  <Text style={{ color: D.muted, fontSize: 11, marginTop: 2 }}>{s?.name || "Sin asignatura"}{t.hour ? " · " + t.hour : ""}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <TaskModal
         visible={editingTask !== undefined}

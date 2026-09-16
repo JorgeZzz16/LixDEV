@@ -3,7 +3,7 @@ import { Modal, View, Text, Pressable, TextInput, TouchableOpacity, ScrollView, 
 import { TASK_TYPES } from "../constants";
 import { DateField } from "./DateTimeField";
 import { today, soloNumero, parseNum } from "../logic";
-import { D } from "../theme";
+import { D, input, botonPrimario, botonSecundario, botonPeligro, VELO } from "../theme";
 
 const emptyForm = { title: "", type: "tarea", dueDate: today(), status: "pendiente", priority: "media", grade: "", pct: "" };
 
@@ -44,7 +44,7 @@ export default function TaskModal({ visible, task, subjects, subjectId, initialD
 
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: "#000a", justifyContent: "flex-end" }} onPress={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: VELO, justifyContent: "flex-end" }} onPress={onClose}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "88%" }}>
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 30 }}>
@@ -127,14 +127,14 @@ export default function TaskModal({ visible, task, subjects, subjectId, initialD
 
               <View style={{ flexDirection: "row", gap: 10, marginTop: 6 }}>
                 {task && (
-                  <TouchableOpacity onPress={() => onDelete(task.id)} style={{ paddingVertical: 13, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: D.red + "44", backgroundColor: D.red + "11" }}>
+                  <TouchableOpacity onPress={() => onDelete(task.id)} style={botonPeligro()}>
                     <Text style={{ color: D.red, fontSize: 14 }}>Eliminar</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={onClose} style={{ flex: 1, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: D.border, alignItems: "center" }}>
+                <TouchableOpacity onPress={onClose} style={botonSecundario()}>
                   <Text style={{ color: D.muted, fontSize: 14 }}>Cancelar</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={save} style={{ flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: D.accent, alignItems: "center" }}>
+                <TouchableOpacity onPress={save} style={botonPrimario()}>
                   <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>Guardar</Text>
                 </TouchableOpacity>
               </View>
@@ -158,7 +158,3 @@ function Chip({ active, onPress, label }) {
   );
 }
 
-const input = () => ({
-  backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, borderRadius: 10,
-  paddingVertical: 11, paddingHorizontal: 13, color: D.text, fontSize: 14, marginBottom: 16,
-});

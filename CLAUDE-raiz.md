@@ -23,6 +23,12 @@ preguntas de programación genéricas sin relación con LixT.
   antes de dar algo por terminado.
 - **Los ids son texto/UUID.** Nunca compares con `Number()` — ya hubo un bug
   real de esto en el filtro de tareas por asignatura del PC.
+- **El orden de los arrays NO significa nada después de sincronizar.**
+  `mergeById` (sync.js) reconstruye cada lista desde un `Map` sembrado con las
+  filas remotas, y esas llegan de un `select *` sin `ORDER BY`. Para "lo más
+  reciente" ORDENA A MANO por el campo que toque (`date`, `dueDate`,
+  `updated_at`); nunca `slice(-n)`, `.at(-1)` ni `[length - 1]`. Bug real: las
+  "Sesiones recientes" del PC enseñaban seis sesiones cualesquiera de hace meses.
 - **Cualquier campo nuevo que se sincronice** hay que añadirlo en DOS sitios:
   1. `COLUMNS` en `sync.js` (en ambas plataformas)
   2. Una migración SQL en Supabase

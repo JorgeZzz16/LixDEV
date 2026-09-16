@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
 import { newId, touch } from "../logic";
 import { COLORS } from "../constants";
-import { D } from "../theme";
+import { D, input } from "../theme";
 
 // Sin esto, un usuario que empiece por el móvil (sin haber usado nunca el PC) no
 // tendría ningún programa de estudio: no habría dónde guardar las asignaturas y
@@ -33,7 +33,7 @@ export default function Onboarding({ onCreate }) {
         </Text>
 
         <Label>Nombre</Label>
-        <TextInput value={name} onChangeText={setName} placeholder="Ej: Ingeniería Aeroespacial" placeholderTextColor={D.muted} style={input()} />
+        <TextInput value={name} onChangeText={setName} placeholder="Ej: Ingeniería Aeroespacial" placeholderTextColor={D.muted} style={input({ grande: true })} />
 
         <Label>Cursos</Label>
         <View style={{ flexDirection: "row", gap: 7, marginBottom: 18 }}>
@@ -84,7 +84,3 @@ function Chip({ active, onPress, label }) {
   );
 }
 
-const input = () => ({
-  backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, borderRadius: 10,
-  paddingVertical: 13, paddingHorizontal: 14, color: D.text, fontSize: 15, marginBottom: 18,
-});

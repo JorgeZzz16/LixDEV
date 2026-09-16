@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Text, TouchableOpacity, Platform } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { D } from "../theme";
+import { D, campo } from "../theme";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Campos de fecha y hora con el selector nativo del sistema.
@@ -86,8 +86,3 @@ export function TimeField({ value, onChange }) {
   );
 }
 
-const campo = () => ({
-  backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, borderRadius: 10,
-  paddingVertical: 12, paddingHorizontal: 14,
-  flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-});

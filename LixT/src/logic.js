@@ -416,3 +416,30 @@ export function minutesByDate(sessions) {
   for (const s of sessions || []) acc[s.date] = (acc[s.date] || 0) + s.minutes;
   return acc;
 }
+
+// Racha de estudio: días seguidos con al menos una sesión, contando hacia atrás.
+//
+// Si hoy todavía no has estudiado la racha NO se rompe: se cuenta desde ayer.
+// Sin esa cortesía el contador aparecería a 0 cada mañana y volvería a su valor
+// por la tarde, que es justo lo que hace inútil un contador de racha.
+//
+// Devuelve { dias, hoy }: `hoy` dice si el día de hoy ya cuenta, para poder
+// pintar la racha "en riesgo" hasta que estudies.
+export function studyStreak(sessions, todayStr = today()) {
+  const dias = new Set((sessions || []).filter(s => s.minutes > 0).map(s => s.date));
+  const hoy = dias.has(todayStr);
+
+  // Punto de partida: hoy si cuenta, si no ayer. Si ayer tampoco, no hay racha.
+  const d = parseDate(todayStr);
+  if (!hoy) d.setDate(d.getDate() - 1);
+  if (!dias.has(fmtDate(d))) return { dias: 0, hoy };
+
+  // Se retrocede día a día con setDate, que ya arregla solo el cambio de mes y
+  // de año (y los días de 23 o 25 horas del cambio de hora, al ser fechas locales).
+  let n = 0;
+  while (dias.has(fmtDate(d))) {
+    n++;
+    d.setDate(d.getDate() - 1);
+  }
+  return { dias: n, hoy };
+}

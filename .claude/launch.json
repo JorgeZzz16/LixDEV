@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lixt-pc",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "LixT", "run", "dev"],
+      "port": 1420
+    }
+  ]
+}

@@ -244,9 +244,16 @@ export async function syncAll(localState, extraSettings = null) {
   }
 
   // 4. Ajustes (duraciones del timer, umbral de aprobado…)
+  //
+  // Se MEZCLA sobre lo que ya había en el servidor en vez de reemplazarlo. El PC
+  // manda un objeto literal con las claves que conoce, así que sin esta mezcla
+  // borraba las que solo entiende el móvil (los ajustes de avisos) en cuanto
+  // sincronizaba, y al revés. Ninguna de las dos apps borra claves de ajustes, así
+  // que quedarse con las desconocidas no resucita nada que alguien quisiera fuera.
   if (extraSettings) {
+    const fundidos = { ...(remote.settings || {}), ...extraSettings };
     const { error } = await supabase.from("settings").upsert(
-      { user_id: userId, data: extraSettings, updated_at: new Date().toISOString() },
+      { user_id: userId, data: fundidos, updated_at: new Date().toISOString() },
       { onConflict: "user_id" }
     );
     if (error) throw error;

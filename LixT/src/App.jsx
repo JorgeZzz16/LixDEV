@@ -19,7 +19,7 @@ import {
   gradeColor, gradeLabel, subjectMedal,
   calcFinalGrade as calcGradeOf, stdDev, linearRegression,
   pendingTasks, defaultTaskId, mostStudied, fmtGrade, fmtGradeFull,
-  byDueDate, parseNum,
+  byDueDate, parseNum, studyStreak,
 } from "./logic.js";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
@@ -1400,6 +1400,19 @@ function LixtMain({ appState, setAppState }) {
   const schedule = useMemo(() => alive(activePData.schedule), [activePData.schedule]);
   const cycle    = sessions.length;
 
+  // Las 6 más recientes, ORDENADAS A MANO. El orden del array no sirve: al
+  // sincronizar, `mergeById` reconstruye la lista desde un Map sembrado con las
+  // filas remotas, y esas vienen de un `select *` sin ORDER BY — o sea, en el
+  // orden que le apetezca a Postgres. Antes esto era `sessions.slice(-6)` y
+  // enseñaba seis sesiones cualesquiera de hace meses.
+  // Se ordena por día de estudio y, dentro del mismo día, por cuándo se apuntó.
+  const recentSessions = useMemo(
+    () => [...sessions]
+      .sort((a, b) => (b.date || "").localeCompare(a.date || "")
+                   || String(b.updated_at || "").localeCompare(String(a.updated_at || "")))
+      .slice(0, 6),
+    [sessions]);
+
   const [durations,  setDurations]  = useState(() => appState?.durations  || { work: 25, short: 5, long: 15 });
   const [longEvery,  setLongEvery]  = useState(() => appState?.longEvery  || 4);
   const [workCount,  setWorkCount]  = useState(() => ls("lixt_workcount",    0));
@@ -2167,6 +2180,11 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
 
   const todayStr = today();
 
+  // Racha de estudio. Va aquí y no arriba con las demás derivadas de `sessions`
+  // porque necesita `todayStr`, que se declara en esta línea: ponerla antes es un
+  // "Cannot access 'todayStr' before initialization" que tira la app al arrancar.
+  const racha = useMemo(() => studyStreak(sessions, todayStr), [sessions, todayStr]);
+
   // Cursos académicos disponibles (1 sep → 31 ago del año siguiente)
   const academicCourses = useMemo(
     () => [...new Set([...academicCoursesOf(sessions), academicCourseOf(todayStr)])].sort((a, b) => b - a),
@@ -2405,7 +2423,8 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, alignItems: "start" }}>
 
-              {/* Izquierda — Cronómetro */}
+              {/* Izquierda — Cronómetro + racha */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <Card>
                 <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 14, color: D.muted }}>Temporizador</div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -2456,6 +2475,23 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ fontSize: 12, color: D.muted, textAlign: "center", marginTop: 8 }}>Ciclo #{cycle + 1} · {cycle} completados</div>
               </Card>
 
+                <Card style={{ display: "flex", alignItems: "center", gap: 13 }}>
+                  <span style={{ fontSize: 26, lineHeight: 1, filter: racha.dias ? "none" : "grayscale(1)", opacity: racha.dias ? 1 : 0.5 }}>🔥</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 18, fontWeight: 600, color: racha.dias ? D.amber : D.muted }}>
+                      {racha.dias} día{racha.dias === 1 ? "" : "s"} seguido{racha.dias === 1 ? "" : "s"}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: D.muted, marginTop: 2 }}>
+                      {racha.dias === 0
+                        ? "Estudia hoy para empezar una racha."
+                        : racha.hoy
+                          ? "Hoy ya cuenta. Sigue así."
+                          : "Hoy todavía no cuenta: estudia antes de medianoche para no perderla."}
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
               {/* Derecha — Asignación + Sesiones + Stats */}
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <Card>
@@ -2492,12 +2528,12 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     </button>
                   </div>
                   {sessions.length === 0 && <div style={{ fontSize: 13, color: D.muted, textAlign: "center", padding: "16px 0" }}>Sin sesiones aún</div>}
-                  {/* Las sesiones se añaden al final, así que las 6 últimas del array
-                      son las 6 más recientes. Antes se filtraban las manuales
-                      comparando `s.id > ...`, que funcionaba cuando los ids eran
-                      Date.now() pero con UUID es una comparación de texto: cada
+                  {/* Ordenadas por fecha en `recentSessions`, no por posición en el
+                      array (ver el comentario de arriba). Antes también se filtraban
+                      las manuales comparando `s.id > ...`, que funcionaba cuando los
+                      ids eran Date.now() pero con UUID es comparación de texto: cada
                       sesión manual aparecía o no según su primera letra. */}
-                  {sessions.slice(-6).reverse().map(s => (
+                  {recentSessions.map(s => (
                     <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, borderLeft: "3px solid " + (subjects.find(x => x.id === s.subjectId)?.color || s.subjectColor), marginBottom: 5, background: D.card2 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.subjectName}</div>
@@ -3188,9 +3224,10 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                           <div key={m} style={{ position: "absolute", top: i * PX_HORA, left: 0, right: 0, height: 1, background: D.border }} />
                         ))}
                         {/* Hora actual. Un trozo por columna, estirado sobre el gap de
-                            4px de la rejilla para que se vea como una línea continua. */}
+                            4px de la rejilla para que se vea como una línea continua.
+                            Translúcida para no tapar la clase por la que cruza. */}
                         {enRejilla && (
-                          <div style={{ position: "absolute", top: nowTop, left: -4, right: -4, height: 2, background: D.red, zIndex: 4, pointerEvents: "none" }} />
+                          <div style={{ position: "absolute", top: nowTop, left: -4, right: -4, height: 2, background: D.red + "80", zIndex: 4, pointerEvents: "none" }} />
                         )}
                         {daySlots(d).map(slot => {
                           const subj = subjects.find(s => s.id === slot.subjectId);
@@ -3206,7 +3243,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                                 position: "absolute", top, height: h - 3, left: 3, right: 1,
                                 background: color + "33", borderLeft: "3px solid " + color, borderRadius: 6,
                                 padding: "4px 6px", overflow: "hidden", cursor: "pointer",
-                                boxShadow: active ? "0 0 0 2px " + D.accent + ", 0 0 12px " + D.accent + "88" : "none",
+                                boxShadow: active ? "0 0 0 2px " + color + ", 0 0 12px " + color + "88" : "none",
                                 zIndex: active ? 2 : 1,
                               }}>
                               <div style={{ fontSize: 11, fontWeight: 700, color: D.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -3555,14 +3592,15 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                         <div style={{ position:"absolute", top:3, left:scheduleAuto?22:3, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
                       </button>
                     </div>
+                    {/* TimeWheel, no <input type="time">: WebView2 lo pinta con su tema
+                        claro y su icono gris (ver el comentario de TimeWheel). Estos dos
+                        eran los únicos que quedaban sin migrar. */}
                     {!scheduleAuto && (
                       <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, paddingLeft:14 }}>
                         <span style={{ fontSize:12, color:D.muted }}>De</span>
-                        <input type="time" value={scheduleStart} onChange={e => setScheduleStart(e.target.value)}
-                          style={{ background:D.card2, border:"1px solid "+D.border, borderRadius:7, color:D.text, fontSize:12, padding:"6px 8px" }} />
+                        <div style={{ flex:1 }}><TimeWheel value={scheduleStart} onChange={setScheduleStart} /></div>
                         <span style={{ fontSize:12, color:D.muted }}>a</span>
-                        <input type="time" value={scheduleEnd} onChange={e => setScheduleEnd(e.target.value)}
-                          style={{ background:D.card2, border:"1px solid "+D.border, borderRadius:7, color:D.text, fontSize:12, padding:"6px 8px" }} />
+                        <div style={{ flex:1 }}><TimeWheel value={scheduleEnd} onChange={setScheduleEnd} /></div>
                       </div>
                     )}
                   </div>

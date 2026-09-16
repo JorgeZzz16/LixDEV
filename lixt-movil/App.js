@@ -5,10 +5,11 @@
 // react-navigation antes de necesitarlo.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator, SafeAreaView, StatusBar, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useStore } from "./src/store";
+import { studyStreak } from "./src/logic";
 import { syncReminders } from "./src/notifications";
 import { D } from "./src/theme";
 import Splash from "./src/screens/Splash";
@@ -22,6 +23,21 @@ import Grades   from "./src/screens/Grades";
 import Stats    from "./src/screens/Stats";
 import Schedule from "./src/screens/Schedule";
 import Settings from "./src/screens/Settings";
+
+// Racha de estudio en la cabecera. El PC la enseña como tarjeta entera; aquí no
+// hay sitio, así que es la llama + el número, y apagada en gris cuando no hay
+// racha. Si hoy todavía no cuenta se deja a media tinta: avisa de que está en
+// juego sin gritar.
+function Racha({ sessions }) {
+  const { dias, hoy } = useMemo(() => studyStreak(sessions), [sessions]);
+  if (!dias) return null;
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", marginRight: 14, opacity: hoy ? 1 : 0.5 }}>
+      <Text style={{ fontSize: 14 }}>🔥</Text>
+      <Text style={{ color: hoy ? D.amber : D.muted, fontSize: 13, fontWeight: "700", marginLeft: 3 }}>{dias}</Text>
+    </View>
+  );
+}
 
 // Orden pedido: Tareas, Calendario, Horario, Asignaturas, Notas, Stats
 const TABS = [
@@ -38,9 +54,10 @@ export default function App() {
   const [tab, setTab] = useState("tasks");
   const [showSettings, setShowSettings] = useState(false);
 
-  // Rango de la rejilla del horario: lo edita Ajustes y lo pinta Horario, así que
-  // vive aquí. Preferencia local del teléfono, no se sincroniza con el PC.
-  const [grid, setGridState] = useState({ auto: true, start: "08:30", end: "14:30" });
+  // Rango de la rejilla del horario y vista (semana/día): lo edita Ajustes y lo
+  // pinta Horario, así que vive aquí. Preferencia local del teléfono, no se
+  // sincroniza con el PC.
+  const [grid, setGridState] = useState({ auto: true, start: "08:30", end: "14:30", vista: "semana" });
   useEffect(() => {
     AsyncStorage.getItem("lixt_grid").then(v => { if (v) setGridState(g => ({ ...g, ...JSON.parse(v) })); });
   }, []);
@@ -62,7 +79,9 @@ export default function App() {
   // Reprograma los avisos cada vez que cambian las tareas (creadas aquí o bajadas
   // del PC al sincronizar). Es un "cancelar todo y volver a programar", así que
   // repetirlo de más no duplica nada.
-  useEffect(() => { syncReminders(store.data?.tasks); }, [store.data?.tasks]);
+  // También al cambiar los ajustes: apagar los avisos tiene que cancelar de
+  // verdad los que ya estaban puestos, no solo dejar de crear nuevos.
+  useEffect(() => { syncReminders(store.data?.tasks, store.settings); }, [store.data?.tasks, store.settings]);
 
   // La pantalla de carga se mantiene hasta que: los datos locales estén, haya
   // pasado el tiempo mínimo, y la primera sincronización haya terminado. Ese
@@ -100,6 +119,7 @@ export default function App() {
           LixT <Text style={{ color: D.muted, fontSize: 11, fontWeight: "400" }}>v1.4.0</Text>
         </Text>
         {store.syncing && <ActivityIndicator color={D.muted} size="small" style={{ marginRight: 14 }} />}
+        <Racha sessions={store.data.sessions} />
         <TouchableOpacity onPress={() => setShowSettings(true)}>
           <Text style={{ color: D.muted, fontSize: 19 }}>⚙</Text>
         </TouchableOpacity>

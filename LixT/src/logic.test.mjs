@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   calcFinalGrade, touch, GRADE_SCALES, fmtGrade, fmtGradeFull, setGradeConfig, weightedAverage,
   soloNumero, parseNum, byDueDate, pendingTasks, today, pad, parseDate, fmtDate,
-  academicCourseOf, startOfWeek, endOfWeek,
+  academicCourseOf, startOfWeek, endOfWeek, studyStreak,
 } from "./logic.js";
 
 const subj = { id: "s1", name: "Cálculo", manualGrade: null };
@@ -178,5 +178,38 @@ assert.equal(academicCourseOf("2027-02-10"), 2026);
 assert.equal(startOfWeek("2026-07-08"), "2026-07-06");   // miércoles → lunes
 assert.equal(endOfWeek("2026-07-08"),   "2026-07-12");   // → domingo
 assert.equal(startOfWeek("2026-07-12"), "2026-07-06");   // domingo cuenta con su lunes
+
+// ── Racha de estudio ────────────────────────────────────────────────────────
+const ses = (...fechas) => fechas.map(d => ({ date: d, minutes: 25 }));
+
+// Días seguidos acabando en hoy
+assert.deepEqual(studyStreak(ses("2026-09-14", "2026-09-15", "2026-09-16"), "2026-09-16"),
+                 { dias: 3, hoy: true });
+
+// Hoy sin estudiar todavía: la racha aguanta y se marca que hoy no cuenta
+assert.deepEqual(studyStreak(ses("2026-09-14", "2026-09-15"), "2026-09-16"),
+                 { dias: 2, hoy: false });
+
+// Ni hoy ni ayer: rota
+assert.deepEqual(studyStreak(ses("2026-09-10"), "2026-09-16"), { dias: 0, hoy: false });
+
+// Un hueco corta la cuenta por detrás, no la anula
+assert.deepEqual(studyStreak(ses("2026-09-12", "2026-09-15", "2026-09-16"), "2026-09-16"),
+                 { dias: 2, hoy: true });
+
+// Varias sesiones el mismo día cuentan como un día, no como tres
+assert.deepEqual(studyStreak(ses("2026-09-16", "2026-09-16", "2026-09-16"), "2026-09-16"),
+                 { dias: 1, hoy: true });
+
+// Cruza el cambio de mes (y de año) sin saltarse nada
+assert.equal(studyStreak(ses("2025-12-30", "2025-12-31", "2026-01-01"), "2026-01-01").dias, 3);
+
+// Una sesión de 0 minutos no sostiene la racha
+assert.deepEqual(studyStreak([{ date: "2026-09-16", minutes: 0 }], "2026-09-16"),
+                 { dias: 0, hoy: false });
+
+// Sin sesiones no revienta
+assert.deepEqual(studyStreak([], "2026-09-16"), { dias: 0, hoy: false });
+assert.deepEqual(studyStreak(null, "2026-09-16"), { dias: 0, hoy: false });
 
 console.log("logic.js OK");

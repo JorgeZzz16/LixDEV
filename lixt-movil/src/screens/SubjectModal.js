@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Modal, View, Text, Pressable, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
 import { COLORS } from "../constants";
 import { soloNumero, parseNum } from "../logic";
-import { D } from "../theme";
+import { D, input, botonPrimario, botonSecundario, VELO } from "../theme";
 
 const emptyForm = { name: "", acronym: "", color: COLORS[0], year: null, semester: null, annual: false, credits: "" };
 
@@ -48,7 +48,7 @@ export default function SubjectModal({ visible, subject, years, onClose, onSave 
 
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: "#000a", justifyContent: "flex-end" }} onPress={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: VELO, justifyContent: "flex-end" }} onPress={onClose}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "88%" }}>
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 30 }}>
@@ -88,10 +88,10 @@ export default function SubjectModal({ visible, subject, years, onClose, onSave 
               <TextInput value={f.credits} onChangeText={t => setF(p => ({ ...p, credits: soloNumero(t) }))} placeholder="6" placeholderTextColor={D.muted} keyboardType="decimal-pad" style={input()} />
 
               <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-                <TouchableOpacity onPress={onClose} style={{ flex: 1, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: D.border, alignItems: "center" }}>
+                <TouchableOpacity onPress={onClose} style={botonSecundario()}>
                   <Text style={{ color: D.muted, fontSize: 14 }}>Cancelar</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={save} style={{ flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: D.accent, alignItems: "center" }}>
+                <TouchableOpacity onPress={save} style={botonPrimario()}>
                   <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>Guardar</Text>
                 </TouchableOpacity>
               </View>
@@ -115,7 +115,3 @@ function Chip({ active, onPress, label }) {
   );
 }
 
-const input = () => ({
-  backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, borderRadius: 10,
-  paddingVertical: 11, paddingHorizontal: 13, color: D.text, fontSize: 14, marginBottom: 16,
-});

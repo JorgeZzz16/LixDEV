@@ -39,3 +39,52 @@ export function applyTheme({ bgTheme, accent } = {}) {
   Object.assign(D, BG_THEMES[bgTheme] || BG_THEMES.dark, FIJOS);
   if (accent) D.accent = accent;
 }
+
+// ─── Estilos compartidos ──────────────────────────────────────────────────────
+//
+// Todos son FUNCIONES, no constantes, por la regla de arriba: `D` se muta al
+// cambiar de fondo, así que un objeto calculado al importar se quedaría con los
+// colores del arranque.
+//
+// Antes cada pantalla se definía su propio `input()`. Había tres copias con tres
+// tamaños distintos, y en TaskModal el campo de fecha y el de texto ni siquiera
+// medían lo mismo estando pegados.
+
+// Sombreado de los modales. El mismo valor que el PC (rgba(0,0,0,0.85)), que
+// usaba #000a (0,67) y se notaba más claro.
+export const VELO = "#000d";
+
+// Alto y tipografía de TODO lo que sea un campo, escriba o no el usuario: cajas
+// de texto, selectores de fecha y de hora.
+const campoBase = () => ({
+  backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, borderRadius: 10,
+  paddingVertical: 12, paddingHorizontal: 14,
+});
+
+// Campo de texto. `grande` para el onboarding, que es una pantalla entera con
+// cuatro campos y se lee mejor con algo más de cuerpo.
+export const input = ({ grande = false } = {}) => ({
+  ...campoBase(),
+  color: D.text,
+  fontSize: grande ? 15 : 14,
+  marginBottom: grande ? 18 : 16,
+});
+
+// Campo pulsable (fecha, hora): mismo alto que `input`, con sitio para el icono.
+export const campo = () => ({
+  ...campoBase(),
+  flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+});
+
+// Botones de la fila de acciones de un modal. Estaban copiados en TaskModal,
+// SubjectModal y ScheduleModal, iguales los tres.
+export const botonPrimario = () => ({
+  flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: D.accent, alignItems: "center",
+});
+export const botonSecundario = () => ({
+  flex: 1, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: D.border, alignItems: "center",
+});
+export const botonPeligro = () => ({
+  paddingVertical: 13, paddingHorizontal: 16, borderRadius: 10,
+  borderWidth: 1, borderColor: D.red + "44", backgroundColor: D.red + "11",
+});
