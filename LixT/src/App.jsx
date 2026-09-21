@@ -20,6 +20,7 @@ import {
   calcFinalGrade as calcGradeOf, stdDev, linearRegression,
   pendingTasks, defaultTaskId, mostStudied, fmtGrade, fmtGradeFull,
   byDueDate, parseNum, studyStreak,
+  tasksToIcs, parseIcs, icsToTasks,
 } from "./logic.js";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
@@ -373,7 +374,7 @@ function Popover({ anclaRef, abierto, onClose, ancho, alto, children }) {
       position: "fixed", top: pos.top, left: pos.left, width: ancho,
       zIndex: 400, boxSizing: "border-box",
       fontFamily: FONT, color: D.text,
-      background: D.card2, border: "1px solid " + D.border, borderRadius: 10,
+      background: D.card2, border: "1px solid " + D.border, borderRadius: 8,
       padding: "10px 12px", boxShadow: "0 6px 20px rgba(0,0,0,0.5)",
     }}>
       {children}
@@ -456,7 +457,7 @@ function DatePicker({ value, onChange }) {
     ? `${sel.getDate()} ${MONTHS[sel.getMonth()].slice(0, 3).toLowerCase()} ${sel.getFullYear()}`
     : "Elegir fecha";
 
-  const flecha = { background: "none", border: "1px solid " + D.border, borderRadius: 7, color: D.text, cursor: "pointer", padding: "2px 9px", fontSize: 13 };
+  const flecha = { background: "none", border: "1px solid " + D.border, borderRadius: 6, color: D.text, cursor: "pointer", padding: "2px 9px", fontSize: 13 };
 
   return (
     <>
@@ -499,7 +500,7 @@ function DatePicker({ value, onChange }) {
         </div>
 
         <button onClick={() => elegir(hoyStr)}
-          style={{ marginTop: 8, width: "100%", padding: "6px 0", borderRadius: 7, border: "1px solid " + D.border, background: D.card, color: D.accent, fontSize: 12, cursor: "pointer" }}>
+          style={{ marginTop: 8, width: "100%", padding: "6px 0", borderRadius: 6, border: "1px solid " + D.border, background: D.card, color: D.accent, fontSize: 12, cursor: "pointer" }}>
           Hoy
         </button>
       </Popover>
@@ -566,7 +567,7 @@ function Card({ children, style }) {
 
 function StatCard({ label, value, color }) {
   return (
-    <div style={{ background: D.card2, borderRadius: 10, padding: "14px 16px", textAlign: "center", border: "1px solid " + D.border }}>
+    <div style={{ background: D.card2, borderRadius: 8, padding: "14px 16px", textAlign: "center", border: "1px solid " + D.border }}>
       <div style={{ fontSize: 28, fontWeight: 600, color: color || D.text }}>{value}</div>
       <div style={{ fontSize: 12, color: D.muted, marginTop: 3 }}>{label}</div>
     </div>
@@ -688,7 +689,7 @@ function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, onSave, 
               )}
             </div>
             {gradeMode === "points" && (
-              <div style={{ fontSize: 11, color: D.muted, padding: "6px 10px", borderRadius: 7, background: D.card2 }}>
+              <div style={{ fontSize: 11, color: D.muted, padding: "6px 10px", borderRadius: 6, background: D.card2 }}>
                 {taskForm.grade !== "" && taskForm.grade != null && taskForm.pts !== "" && taskForm.pts != null && !isNaN(Number(taskForm.grade)) && !isNaN(Number(taskForm.pts))
                   ? <>Suma a la nota final: <strong style={{ color: D.green }}>+{((Number(taskForm.grade) / 10) * Number(taskForm.pts)).toFixed(2)}</strong> (puntos máx. × nota/10)</>
                   : "Define la nota y los puntos máx. para ver cuánto suma."}
@@ -770,7 +771,7 @@ function SessionModal({ editSession, setEditSession, subjects, tasks, onSave, on
             <DatePicker value={editSession.date || today()} onChange={v => setEditSession(es => es ? ({ ...es, date: v }) : es)} />
           </div>
         </div>
-        <div style={{ fontSize: 12, color: D.muted, padding: "6px 10px", borderRadius: 7, background: D.card2 }}>
+        <div style={{ fontSize: 12, color: D.muted, padding: "6px 10px", borderRadius: 6, background: D.card2 }}>
           Duración: <strong style={{ color: D.text }}>{fmtTime(editSession.minutes)}</strong>
         </div>
       </div>
@@ -796,7 +797,7 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
   const ptsContribution = (t) => ((t.grade || 0) / 10) * (t.pts || 0);
 
   return (
-    <div style={{ background: D.card, border: "1px solid " + D.border, borderRadius: 14, overflow: "hidden", marginBottom: 12 }}>
+    <div style={{ background: D.card, border: "1px solid " + D.border, borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
       <div style={{ background: D.card2, padding: "12px 18px", display: "flex", alignItems: "center", gap: 10, borderBottom: collapsed ? "none" : "1px solid " + D.border }}>
         <button onClick={onToggleCollapse} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 12, padding: "2px 4px", flexShrink: 0, lineHeight: 1 }} title={collapsed ? "Expandir" : "Minimizar"}>
           {collapsed ? "▶" : "▼"}
@@ -816,12 +817,12 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
           {subj.course  ? <span style={{ fontSize: 11, fontWeight: 400, color: D.muted, marginLeft: 7 }}>{subj.course}</span>   : null}
         </span>
         {finalGrade !== null && (
-          <span style={{ fontSize: 13, fontWeight: 700, color: gradeColor(finalGrade), background: D.card, padding: "3px 10px", borderRadius: 20, border: "1px solid " + D.border }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: gradeColor(finalGrade), background: D.card, padding: "3px 10px", borderRadius: 999, border: "1px solid " + D.border }}>
             {fmtGradeFull(finalGrade)}{subjectMedal(finalGrade, subj.approved) ? " " + subjectMedal(finalGrade, subj.approved) : ""}
           </span>
         )}
         {collapsed && totalMins > 0 && (
-          <span style={{ fontSize: 12, color: D.muted, padding: "3px 8px", borderRadius: 20, border: "1px solid " + D.border, background: D.card }}>
+          <span style={{ fontSize: 12, color: D.muted, padding: "3px 8px", borderRadius: 999, border: "1px solid " + D.border, background: D.card }}>
             ⏱ {fmtTime(totalMins)}
           </span>
         )}
@@ -830,10 +831,10 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
             {subjTasks.filter(t => t.status !== "completada").length} pendiente{subjTasks.filter(t => t.status !== "completada").length !== 1 ? "s" : ""}
           </span>
         )}
-        <button onClick={() => onNewTask(subj)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 7, cursor: "pointer", color: D.accent, fontSize: 12, padding: "3px 10px", flexShrink: 0 }}>+ Tarea</button>
+        <button onClick={() => onNewTask(subj)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.accent, fontSize: 12, padding: "3px 10px", flexShrink: 0 }}>+ Tarea</button>
         <button onClick={() => onEditSubj(subj)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 14, padding: "2px 5px" }} title="Editar">✎</button>
-        <button onClick={() => onApprove(subj.id)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 7, cursor: "pointer", color: D.green, fontSize: 12, padding: "3px 8px", flexShrink: 0 }} title="Marcar como aprobada">✓</button>
-        <button onClick={() => onArchive(subj.id)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 7, cursor: "pointer", color: D.muted, fontSize: 12, padding: "3px 8px", flexShrink: 0 }} title="Archivar (ocultar)">📁</button>
+        <button onClick={() => onApprove(subj.id)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.green, fontSize: 12, padding: "3px 8px", flexShrink: 0 }} title="Marcar como aprobada">✓</button>
+        <button onClick={() => onArchive(subj.id)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.muted, fontSize: 12, padding: "3px 8px", flexShrink: 0 }} title="Archivar (ocultar)">📁</button>
         <button onClick={() => onDelete(subj.id)} style={{ background: "none", border: "none", cursor: "pointer", color: D.red, fontSize: 14, padding: "2px 5px" }} title="Eliminar">✕</button>
       </div>
       {!collapsed && (
@@ -858,9 +859,9 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
                   </div>
                   <div style={{ flexShrink: 0, textAlign: "right" }}>
                     <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", alignItems: "center" }}>
-                      <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 5, background: D.card, color: PRIORITY_COLOR[t.priority] || D.muted }}>{t.priority}</span>
-                      <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 5, background: D.card, color: D.muted }}>{tt?.label}</span>
-                      {taskMins > 0 && <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 5, background: D.card, color: D.accent }}>⏱ {fmtTime(taskMins)}</span>}
+                      <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: D.card, color: PRIORITY_COLOR[t.priority] || D.muted }}>{t.priority}</span>
+                      <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: D.card, color: D.muted }}>{tt?.label}</span>
+                      {taskMins > 0 && <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: D.card, color: D.accent }}>⏱ {fmtTime(taskMins)}</span>}
                     </div>
                     {t.grade !== null && <div style={{ fontSize: 12, fontWeight: 600, color: gradeColor(t.grade), marginTop: 2 }}>{fmtGradeFull(t.grade)}{t.gradeMode === "points" ? (t.pts ? " (+" + t.pts + " pts)" : "") : (t.pct ? " (" + t.pct + "%)" : "")}</div>}
                   </div>
@@ -878,7 +879,7 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
                       <div style={{ height: 5, borderRadius: 3, background: D.border, overflow: "hidden", marginTop: 3 }}>
-                        <div style={{ height: "100%", borderRadius: 3, background: subj.color, width: t.pct + "%" }} />
+                        <div style={{ height: "100%", borderRadius: 4, background: subj.color, width: t.pct + "%" }} />
                       </div>
                     </div>
                     <div style={{ flexShrink: 0, textAlign: "right", fontSize: 12 }}>
@@ -1177,7 +1178,7 @@ function SessionTimeline({ sessions, subjects, fmtTime, showEmptyDays, onEditSes
           <div style={{ position: "fixed", zIndex: 201, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: 320, maxHeight: "70vh", overflowY: "auto", padding: "14px 16px", borderRadius: 12, background: D.card, border: "1px solid " + D.border, boxShadow: "0 12px 32px #000a" }}>
             <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 600, flex: 1 }}>{expandedDay}</span>
-              <button onClick={() => onAddSession(expandedDay)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 7, border: "1px solid " + D.border, background: D.card2, color: D.accent, cursor: "pointer" }}>＋ Añadir</button>
+              <button onClick={() => onAddSession(expandedDay)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid " + D.border, background: D.card2, color: D.accent, cursor: "pointer" }}>＋ Añadir</button>
               <button onClick={() => setExpandedDay(null)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 15, padding: "2px 8px" }}>✕</button>
             </div>
             {(byDate[expandedDay] || []).length === 0 && <div style={{ fontSize: 12, color: D.muted, padding: "6px 0" }}>Sin sesiones este día</div>}
@@ -1288,7 +1289,7 @@ function Onboarding({ onFinish }) {
 
   return (
     <div style={FULLSCREEN}>
-      <div style={{ background: D.card, border: "1px solid " + D.border, borderRadius: 18, padding: "40px 48px", width: 480, maxWidth: "90vw" }}>
+      <div style={{ background: D.card, border: "1px solid " + D.border, borderRadius: 16, padding: "40px 48px", width: 480, maxWidth: "90vw" }}>
         <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -1, marginBottom: 6 }}>
           Lix<span style={{ color: D.accent }}>T</span>
         </div>
@@ -1305,7 +1306,7 @@ function Onboarding({ onFinish }) {
             <div style={{ display: "flex", gap: 8 }}>
               {[["career","🎓 Grado"],["master","📘 Máster"]].map(([v, label]) => (
                 <button key={v} onClick={() => setOnboardForm(f => ({ ...f, type: v, years: v === "master" ? 2 : 4 }))}
-                  style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid " + (onboardForm.type === v ? D.accent : D.border), background: onboardForm.type === v ? D.accent + "22" : D.card2, color: onboardForm.type === v ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: onboardForm.type === v ? 600 : 400 }}>{label}</button>
+                  style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid " + (onboardForm.type === v ? D.accent : D.border), background: onboardForm.type === v ? D.accent + "22" : D.card2, color: onboardForm.type === v ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: onboardForm.type === v ? 600 : 400 }}>{label}</button>
               ))}
             </div>
           </div>
@@ -1316,7 +1317,7 @@ function Onboarding({ onFinish }) {
               <div style={{ display: "flex", gap: 4 }}>
                 {[1,2,3,4,5,6].map(y => (
                   <button key={y} onClick={() => setOnboardForm(f => ({ ...f, years: y }))}
-                    style={{ flex: 1, padding: "8px 0", borderRadius: 7, border: "1px solid " + (onboardForm.years === y ? D.accent : D.border), background: onboardForm.years === y ? D.accent + "22" : D.card2, color: onboardForm.years === y ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: onboardForm.years === y ? 600 : 400 }}>{y}</button>
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "1px solid " + (onboardForm.years === y ? D.accent : D.border), background: onboardForm.years === y ? D.accent + "22" : D.card2, color: onboardForm.years === y ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: onboardForm.years === y ? 600 : 400 }}>{y}</button>
                 ))}
               </div>
             </div>
@@ -1325,7 +1326,7 @@ function Onboarding({ onFinish }) {
               <div style={{ display: "flex", gap: 4 }}>
                 {[1,2,3,4].map(s => (
                   <button key={s} onClick={() => setOnboardForm(f => ({ ...f, semestersPerYear: s }))}
-                    style={{ flex: 1, padding: "8px 0", borderRadius: 7, border: "1px solid " + (onboardForm.semestersPerYear === s ? D.accent : D.border), background: onboardForm.semestersPerYear === s ? D.accent + "22" : D.card2, color: onboardForm.semestersPerYear === s ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: onboardForm.semestersPerYear === s ? 600 : 400 }}>{s}</button>
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "1px solid " + (onboardForm.semestersPerYear === s ? D.accent : D.border), background: onboardForm.semestersPerYear === s ? D.accent + "22" : D.card2, color: onboardForm.semestersPerYear === s ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: onboardForm.semestersPerYear === s ? 600 : 400 }}>{s}</button>
                 ))}
               </div>
             </div>
@@ -1339,7 +1340,7 @@ function Onboarding({ onFinish }) {
           </div>
 
           <button disabled={!onboardForm.name.trim()} onClick={finishOnboarding}
-            style={{ marginTop: 8, padding: "13px 0", borderRadius: 10, border: "none", background: onboardForm.name.trim() ? D.accent : D.card2, color: onboardForm.name.trim() ? "#fff" : D.muted, fontSize: 15, fontWeight: 600, cursor: onboardForm.name.trim() ? "pointer" : "not-allowed" }}>
+            style={{ marginTop: 8, padding: "13px 0", borderRadius: 8, border: "none", background: onboardForm.name.trim() ? D.accent : D.card2, color: onboardForm.name.trim() ? "#fff" : D.muted, fontSize: 15, fontWeight: 600, cursor: onboardForm.name.trim() ? "pointer" : "not-allowed" }}>
             Empezar →
           </button>
         </div>
@@ -1666,6 +1667,7 @@ function LixtMain({ appState, setAppState }) {
   const [tempLongEvery, setTempLongEvery] = useState(longEvery);
   const [importError,   setImportError]   = useState("");
   const [importSuccess, setImportSuccess] = useState(false);
+  const [icsMsg,        setIcsMsg]        = useState("");
 
   const startTsRef  = useRef(null);
   const timeLeftRef = useRef(timeLeft);
@@ -2088,21 +2090,57 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
     }
   }
 
-  async function exportData() {
-    const data = { ...appState, durations, longEvery, version: 2 };
-    const json = JSON.stringify(data, null, 2);
-    const filename = "lixt-backup-" + today() + ".json";
+  // Guarda un texto en disco. Con el selector nativo si el webview lo trae, y si
+  // no, descarga de toda la vida. Lo usan el backup y el calendario.
+  async function guardarArchivo(filename, texto, mime, descripcion) {
     if (window.showSaveFilePicker) {
       try {
-        const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: "JSON", accept: { "application/json": [".json"] } }] });
+        const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: descripcion, accept: { [mime]: ["." + filename.split(".").pop()] } }] });
         const writable = await handle.createWritable();
-        await writable.write(json); await writable.close(); return;
+        await writable.write(texto); await writable.close(); return;
       } catch (e) { if (e.name === "AbortError") return; }
     }
-    const blob = new Blob([json], { type: "application/json" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
+    const url = URL.createObjectURL(new Blob([texto], { type: mime }));
+    const a   = document.createElement("a");
     a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+  }
+
+  function exportData() {
+    const data = { ...appState, durations, longEvery, version: 2 };
+    return guardarArchivo("lixt-backup-" + today() + ".json", JSON.stringify(data, null, 2), "application/json", "JSON");
+  }
+
+  // ── Calendario (.ics) ──
+  function exportIcs() {
+    setIcsMsg("");
+    return guardarArchivo("lixt-calendario-" + today() + ".ics", tasksToIcs(tasks, subjects), "text/calendar", "Calendario iCalendar");
+  }
+
+  // Los eventos que ya existen se actualizan en vez de duplicarse: el id sale
+  // del UID (ver `icsToTasks`), así que reimportar el mismo archivo es inocuo.
+  function importIcs(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setIcsMsg("");
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const eventos = parseIcs(ev.target.result);
+        if (!eventos.length) { setIcsMsg("✕ No he encontrado ningún evento en ese archivo."); return; }
+        const nuevas = icsToTasks(eventos, { programId: activeProgramId, tasks: activePData.tasks });
+        const porId = new Map(nuevas.map(t => [String(t.id), t]));
+        setTasks(prev => {
+          const fusionadas = prev.map(t => porId.get(String(t.id)) || t);
+          const vistos = new Set(prev.map(t => String(t.id)));
+          return [...fusionadas, ...nuevas.filter(t => !vistos.has(String(t.id)))];
+        });
+        setIcsMsg(`✓ ${eventos.length} evento${eventos.length === 1 ? "" : "s"} importado${eventos.length === 1 ? "" : "s"}.`);
+      } catch (err) {
+        setIcsMsg("✕ No he podido leer el archivo: " + (err?.message || err));
+      }
+    };
+    reader.readAsText(file);
   }
   // Un backup corrupto no se queda en esta ventana: entra en el estado y de ahí
   // sube a Supabase en la siguiente sincronización. Se comprueba la forma antes
@@ -2293,7 +2331,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
       {/* Barra de progreso indeterminada */}
       <div style={{ width: 180, height: 3, borderRadius: 3, background: D.card2, overflow: "hidden", position: "relative" }}>
         <div style={{
-          position: "absolute", inset: 0, width: "40%", borderRadius: 3,
+          position: "absolute", inset: 0, width: "40%", borderRadius: 4,
           background: `linear-gradient(90deg, transparent, ${D.accent}, transparent)`,
           animation: "lixtSlide 1.3s ease-in-out infinite",
         }} />
@@ -2308,7 +2346,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
     <div style={FULLSCREEN}>
       <style>{LOADING_CSS}</style>
       <div style={{
-        background: D.card, border: "1px solid " + D.border, borderRadius: 18, padding: "38px 42px",
+        background: D.card, border: "1px solid " + D.border, borderRadius: 16, padding: "38px 42px",
         width: 400, maxWidth: "90vw", animation: "lixtRise 0.45s cubic-bezier(.2,.8,.3,1) both",
       }}>
         <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: -1.2, marginBottom: 6, color: D.text }}>
@@ -2334,14 +2372,14 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
           <input type="password" placeholder="Contraseña" value={authForm.password} autoComplete="current-password"
             onChange={e => setAuthForm(f => ({ ...f, password: e.target.value }))}
             onKeyDown={e => e.key === "Enter" && handleAuth()} style={{ ...inp, fontFamily: "inherit" }} />
-          {authError && <div style={{ fontSize: 12, color: D.red, padding: "7px 10px", borderRadius: 7, background: D.red + "11" }}>{authError}</div>}
-          {authInfo  && <div style={{ fontSize: 12, color: D.green, padding: "7px 10px", borderRadius: 7, background: D.green + "11" }}>{authInfo}</div>}
+          {authError && <div style={{ fontSize: 12, color: D.red, padding: "7px 10px", borderRadius: 6, background: D.red + "11" }}>{authError}</div>}
+          {authInfo  && <div style={{ fontSize: 12, color: D.green, padding: "7px 10px", borderRadius: 6, background: D.green + "11" }}>{authInfo}</div>}
           <button onClick={handleAuth} disabled={authBusy || !authForm.email || !authForm.password}
-            style={{ padding: "11px 0", borderRadius: 9, border: "none", background: (authBusy || !authForm.email || !authForm.password) ? D.card2 : D.accent, color: (authBusy || !authForm.email || !authForm.password) ? D.muted : "#fff", fontSize: 14, fontWeight: 500, cursor: (authBusy || !authForm.email || !authForm.password) ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+            style={{ padding: "11px 0", borderRadius: 8, border: "none", background: (authBusy || !authForm.email || !authForm.password) ? D.card2 : D.accent, color: (authBusy || !authForm.email || !authForm.password) ? D.muted : "#fff", fontSize: 14, fontWeight: 500, cursor: (authBusy || !authForm.email || !authForm.password) ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
             {authBusy ? "Un momento…" : authMode === "signup" ? "Crear cuenta" : "Entrar"}
           </button>
           <button onClick={() => { setSkipAuth(true); lsSet("lixt_skip_auth", true); }}
-            style={{ padding: "9px 0", borderRadius: 9, border: "none", background: "none", color: D.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+            style={{ padding: "9px 0", borderRadius: 8, border: "none", background: "none", color: D.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
             Usar sin cuenta (solo en este equipo)
           </button>
         </div>
@@ -2362,7 +2400,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
       <div style={{ width: 220, background: D.sidebar, borderRight: "1px solid " + D.border, display: "flex", flexDirection: "column", flexShrink: 0 }}>
         <div style={{ padding: "22px 20px 14px", borderBottom: "1px solid " + D.border }}>
           <div style={{ fontSize: 26, fontWeight: 800, color: D.accent, letterSpacing: "-1px" }}>
-            LixT <span style={{ fontSize: 11, fontWeight: 400, color: D.muted, letterSpacing: 0 }}>v1.4.0</span>
+            LixT <span style={{ fontSize: 11, fontWeight: 400, color: D.muted, letterSpacing: 0 }}>v1.4.5</span>
           </div>
           <div style={{ fontSize: 11, color: D.muted, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {activeProgram?.name || "Mi programa"}
@@ -2462,8 +2500,8 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                       }
                       return !r;
                     });
-                  }} style={{ padding: "11px 40px", borderRadius: 10, border: "none", background: running ? D.red : subjColor, color: "#fff", fontWeight: 600, fontSize: 16, cursor: "pointer" }}>{running ? "Pausar" : "Iniciar"}</button>
-                  <button onClick={() => { setRunning(false); const t = durSec[mode]; setTimeLeft(t); timeLeftRef.current = t; setWorkCount(0); }} style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 18, cursor: "pointer" }}>↺</button>
+                  }} style={{ padding: "11px 40px", borderRadius: 8, border: "none", background: running ? D.red : subjColor, color: "#fff", fontWeight: 600, fontSize: 16, cursor: "pointer" }}>{running ? "Pausar" : "Iniciar"}</button>
+                  <button onClick={() => { setRunning(false); const t = durSec[mode]; setTimeLeft(t); timeLeftRef.current = t; setWorkCount(0); }} style={{ padding: "11px 16px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 18, cursor: "pointer" }}>↺</button>
                 </div>
                 {(running || (timeLeft < durSec[mode] && timeLeft > 0)) && (
                   <div style={{ display: "flex", justifyContent: "center" }}>
@@ -2559,7 +2597,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
                   {[...academicCourses, "all"].map(y => (
                     <button key={y} onClick={() => setTimelineCourse(y)}
-                      style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid " + (timelineCourse === y ? D.accent : D.border), background: timelineCourse === y ? D.accent : "none", color: timelineCourse === y ? "#fff" : D.muted, fontSize: 12, cursor: "pointer" }}>
+                      style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid " + (timelineCourse === y ? D.accent : D.border), background: timelineCourse === y ? D.accent : "none", color: timelineCourse === y ? "#fff" : D.muted, fontSize: 12, cursor: "pointer" }}>
                       {y === "all" ? "Todo" : academicCourseLabel(y)}
                     </button>
                   ))}
@@ -2592,7 +2630,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ display: "flex", gap: 4 }}>
                   {[null, ...Array.from({length: activeProgram?.years ?? 4}, (_, i) => i + 1)].map(y => (
                     <button key={y ?? "all"} onClick={() => setFilterSubjYear(y)}
-                      style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid " + (filterSubjYear === y ? D.accent : D.border), background: filterSubjYear === y ? D.accent + "22" : D.card2, color: filterSubjYear === y ? D.accent : D.muted, fontSize: 12, cursor: "pointer", fontWeight: filterSubjYear === y ? 600 : 400 }}>
+                      style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid " + (filterSubjYear === y ? D.accent : D.border), background: filterSubjYear === y ? D.accent + "22" : D.card2, color: filterSubjYear === y ? D.accent : D.muted, fontSize: 12, cursor: "pointer", fontWeight: filterSubjYear === y ? 600 : 400 }}>
                       {y === null ? "Todos" : y + "º"}
                     </button>
                   ))}
@@ -2600,7 +2638,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ width: 1, height: 20, background: D.border }} />
                 {[["all","Todas"],["active","En curso"],["approved","Aprobadas"],["archived","Archivadas"]].map(([v, label]) => (
                   <button key={v} onClick={() => setFilterSubjStatus(v)}
-                    style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid " + (filterSubjStatus === v ? D.accent : D.border), background: filterSubjStatus === v ? D.accent + "22" : D.card2, color: filterSubjStatus === v ? D.accent : D.muted, fontSize: 12, cursor: "pointer", fontWeight: filterSubjStatus === v ? 600 : 400 }}>
+                    style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid " + (filterSubjStatus === v ? D.accent : D.border), background: filterSubjStatus === v ? D.accent + "22" : D.card2, color: filterSubjStatus === v ? D.accent : D.muted, fontSize: 12, cursor: "pointer", fontWeight: filterSubjStatus === v ? 600 : 400 }}>
                     {label}
                   </button>
                 ))}
@@ -2632,12 +2670,12 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     </button>
                   )}
                   {(showApproved || filterSubjStatus === "approved") && approvedVisible.map(s => (
-                    <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: D.card, marginBottom: 6, border: "1px solid " + D.green + "44" }}>
+                    <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 8, background: D.card, marginBottom: 6, border: "1px solid " + D.green + "44" }}>
                       <div style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 13, flex: 1, color: D.text }}>{s.name}</span>
                       {s.year && <span style={{ fontSize: 11, color: D.muted }}>{s.year}º {semLabel(s.semester)}</span>}
                       {s.credits && <span style={{ fontSize: 11, color: D.muted }}>{s.credits} ECTS</span>}
-                      <span style={{ fontSize: 10, color: D.green, background: D.green + "22", padding: "2px 6px", borderRadius: 5 }}>✓ Aprobada</span>
+                      <span style={{ fontSize: 10, color: D.green, background: D.green + "22", padding: "2px 6px", borderRadius: 6 }}>✓ Aprobada</span>
                       <button onClick={() => openEditSubj(s)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 13, padding: "2px 5px" }}>✎</button>
                       <button onClick={() => toggleApprove(s.id)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 12, padding: "2px 5px" }}>↩ Restaurar</button>
                       <button onClick={() => deleteSubject(s.id)} style={{ background: "none", border: "none", cursor: "pointer", color: D.red, fontSize: 13, padding: "2px 5px" }}>✕</button>
@@ -2655,11 +2693,11 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     </button>
                   )}
                   {(showArchived || filterSubjStatus === "archived") && archivedVisible.map(s => (
-                    <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: D.card, opacity: 0.6, marginBottom: 6, border: "1px solid " + D.border }}>
+                    <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 8, background: D.card, opacity: 0.6, marginBottom: 6, border: "1px solid " + D.border }}>
                       <div style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 13, flex: 1, color: D.muted, textDecoration: "line-through" }}>{s.name}</span>
                       {s.year && <span style={{ fontSize: 11, color: D.muted }}>{s.year}º {semLabel(s.semester)}</span>}
-                      <span style={{ fontSize: 10, color: D.muted, background: D.card2, padding: "2px 6px", borderRadius: 5 }}>📁 Archivada</span>
+                      <span style={{ fontSize: 10, color: D.muted, background: D.card2, padding: "2px 6px", borderRadius: 6 }}>📁 Archivada</span>
                       <button onClick={() => openEditSubj(s)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 13, padding: "2px 5px" }}>✎</button>
                       <button onClick={() => toggleArchive(s.id)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 12, padding: "2px 5px" }}>↩ Restaurar</button>
                       <button onClick={() => deleteSubject(s.id)} style={{ background: "none", border: "none", cursor: "pointer", color: D.red, fontSize: 13, padding: "2px 5px" }}>✕</button>
@@ -2699,7 +2737,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     <div style={{ display: "flex", gap: 4 }}>
                       {[null, ...taskCourses].map(y => (
                         <button key={y ?? "all"} onClick={() => setFilterTaskCourse(y)}
-                          style={{ padding: "7px 11px", borderRadius: 7, border: "1px solid " + (filterTaskCourse === y ? D.accent : D.border), background: filterTaskCourse === y ? D.accent + "22" : D.card2, color: filterTaskCourse === y ? D.accent : D.muted, fontSize: 12, cursor: "pointer", fontWeight: filterTaskCourse === y ? 600 : 400 }}>
+                          style={{ padding: "7px 11px", borderRadius: 6, border: "1px solid " + (filterTaskCourse === y ? D.accent : D.border), background: filterTaskCourse === y ? D.accent + "22" : D.card2, color: filterTaskCourse === y ? D.accent : D.muted, fontSize: 12, cursor: "pointer", fontWeight: filterTaskCourse === y ? 600 : 400 }}>
                           {y === null ? "Todos" : academicCourseLabel(y)}
                         </button>
                       ))}
@@ -2724,7 +2762,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                             <div style={{ flex: 1, height: 1, background: D.border }} />
                           </div>
                         )}
-                        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", background: D.card, borderRadius: 10, border: "1px solid " + D.border, borderLeft: "4px solid " + (subj?.color || "#888"), opacity: t.status === "completada" ? 0.55 : 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", background: D.card, borderRadius: 8, border: "1px solid " + D.border, borderLeft: "4px solid " + (subj?.color || "#888"), opacity: t.status === "completada" ? 0.55 : 1 }}>
                           <input type="checkbox" checked={t.status === "completada"} onChange={() => toggleStatus(t.id)} style={{ width: 16, height: 16, cursor: "pointer", accentColor: D.accent, flexShrink: 0 }} />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 3 }}>
@@ -2836,7 +2874,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
               return (
                 <div
                   onClick={() => setSelGradeSubj(isSelected ? null : rowKey)}
-                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9, background: isSelected ? s.color + "22" : D.card2, marginBottom: 5, borderLeft: "3px solid " + s.color, cursor: "pointer", transition: "background 0.15s" }}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8, background: isSelected ? s.color + "22" : D.card2, marginBottom: 5, borderLeft: "3px solid " + s.color, cursor: "pointer", transition: "background 0.15s" }}
                 >
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{s.name}{s._splitSem ? <span style={{ fontSize: 10, color: D.muted, marginLeft: 5 }}>C{s._splitSem}</span> : null}</span>
                   {s.credits && <span style={{ fontSize: 11, color: D.muted, flexShrink: 0 }}>{s.credits} ECTS</span>}
@@ -2845,7 +2883,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     {showGrade && finalGrade !== null ? fmtGrade(finalGrade) + (subjectMedal(finalGrade, s.approved) ? " " + subjectMedal(finalGrade, s.approved) : "") : "—"}
                   </span>
                   {s.approved && !subjectMedal(finalGrade, s.approved) && (
-                    <span style={{ fontSize: 10, color: D.green, background: D.green + "22", padding: "2px 6px", borderRadius: 5, flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: 10, color: D.green, background: D.green + "22", padding: "2px 6px", borderRadius: 6, flexShrink: 0 }}>✓</span>
                   )}
                   <span style={{ fontSize: 11, color: D.muted }}>{isSelected ? "▲" : "▼"}</span>
                 </div>
@@ -2863,16 +2901,16 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
               const isManual = s.manualGrade !== null && s.manualGrade !== undefined;
 
               return (
-                <div style={{ margin: "0 0 10px 0", padding: "14px 16px", borderRadius: 10, background: D.card, border: "1px solid " + s.color + "66" }}>
+                <div style={{ margin: "0 0 10px 0", padding: "14px 16px", borderRadius: 8, background: D.card, border: "1px solid " + s.color + "66" }}>
                   {/* Header */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
                     <div style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
                     <span style={{ fontWeight: 600, fontSize: 14, flex: 1 }}>{s.name}</span>
-                    <button onClick={() => openEditSubj(s)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 7, cursor: "pointer", color: D.muted, fontSize: 12, padding: "3px 10px" }}>✎ Editar</button>
-                    <button onClick={() => openNewTask(s)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 7, cursor: "pointer", color: D.accent, fontSize: 12, padding: "3px 10px" }}>+ Tarea</button>
+                    <button onClick={() => openEditSubj(s)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.muted, fontSize: 12, padding: "3px 10px" }}>✎ Editar</button>
+                    <button onClick={() => openNewTask(s)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.accent, fontSize: 12, padding: "3px 10px" }}>+ Tarea</button>
                     <button
                       onClick={() => { toggleApprove(s.id); setSelGradeSubj(null); }}
-                      style={{ background: s.approved ? D.card2 : D.green + "33", border: "1px solid " + (s.approved ? D.border : D.green), borderRadius: 7, cursor: "pointer", color: s.approved ? D.muted : D.green, fontSize: 12, padding: "4px 12px", fontWeight: 600, flexShrink: 0 }}>
+                      style={{ background: s.approved ? D.card2 : D.green + "33", border: "1px solid " + (s.approved ? D.border : D.green), borderRadius: 6, cursor: "pointer", color: s.approved ? D.muted : D.green, fontSize: 12, padding: "4px 12px", fontWeight: 600, flexShrink: 0 }}>
                       {s.approved ? "↩ Restaurar" : "✓ Marcar aprobada"}
                     </button>
                     <button onClick={() => setSelGradeSubj(null)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 16, padding: "2px 6px" }}>✕</button>
@@ -2897,12 +2935,12 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                           const v = e.target.value.trim();
                           setSubjects(prev => prev.map(x => x.id === s.id ? touch({ ...x, manualGrade: parseNum(v) }) : x));
                         }}
-                        style={{ width: 90, padding: "6px 8px", borderRadius: 7, border: "1px solid " + D.border, background: D.card, color: D.text, fontSize: 13 }}
+                        style={{ width: 90, padding: "6px 8px", borderRadius: 6, border: "1px solid " + D.border, background: D.card, color: D.text, fontSize: 13 }}
                       />
                       {isManual && (
                         <button
                           onClick={() => setSubjects(prev => prev.map(x => x.id === s.id ? touch({ ...x, manualGrade: null }) : x))}
-                          style={{ background: "none", border: "1px solid " + D.border, borderRadius: 7, cursor: "pointer", color: D.muted, fontSize: 11, padding: "5px 8px" }}
+                          style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.muted, fontSize: 11, padding: "5px 8px" }}
                           title="Volver a la nota calculada">✕ Quitar</button>
                       )}
                     </div>
@@ -2910,7 +2948,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
 
                   {/* Tareas con peso % */}
                   {gradedTasks.length > 0 && gradedTasks.map(t => (
-                    <div key={t.id} onClick={() => openEditTask(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 7, background: D.card2, marginBottom: 5, cursor: "pointer" }}>
+                    <div key={t.id} onClick={() => openEditTask(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 6, background: D.card2, marginBottom: 5, cursor: "pointer" }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
                         <div style={{ height: 4, borderRadius: 2, background: D.border, overflow: "hidden", marginTop: 4 }}>
@@ -2927,7 +2965,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     <>
                       <div style={{ fontSize: 11, color: D.muted, margin: "8px 0 5px" }}>Puntos extra:</div>
                       {pointsTasks.map(t => (
-                        <div key={t.id} onClick={() => openEditTask(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 7, background: D.card2, marginBottom: 5, cursor: "pointer" }}>
+                        <div key={t.id} onClick={() => openEditTask(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 6, background: D.card2, marginBottom: 5, cursor: "pointer" }}>
                           <span style={{ flex: 1, fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
                           <span style={{ fontSize: 12, color: D.muted }}>{t.pts} pts máx</span>
                           <span style={{ fontSize: 13, fontWeight: 700, color: D.green }}>+{((t.grade / 10) * t.pts).toFixed(2)}</span>
@@ -2941,7 +2979,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     <>
                       <div style={{ fontSize: 11, color: D.muted, margin: "8px 0 5px" }}>Sin peso asignado:</div>
                       {gradedNoPct.map(t => (
-                        <div key={t.id} onClick={() => openEditTask(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 7, background: D.card2, marginBottom: 5, cursor: "pointer" }}>
+                        <div key={t.id} onClick={() => openEditTask(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 6, background: D.card2, marginBottom: 5, cursor: "pointer" }}>
                           <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
                           <span style={{ fontSize: 13, fontWeight: 700, color: gradeColor(t.grade) }}>{fmtGradeFull(t.grade)}</span>
                         </div>
@@ -2977,7 +3015,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ height: 10, borderRadius: 5, background: D.card2, overflow: "hidden", marginBottom: 6 }}>
-                        <div style={{ height: "100%", borderRadius: 5, background: D.accent, width: careerPct + "%", transition: "width 0.6s" }} />
+                        <div style={{ height: "100%", borderRadius: 6, background: D.accent, width: careerPct + "%", transition: "width 0.6s" }} />
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: D.muted }}>
                         <span>{approvedCredits} créditos aprobados</span>
@@ -2985,15 +3023,15 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                       </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, flexShrink: 0 }}>
-                      <div style={{ textAlign: "center", padding: "8px 14px", background: D.card2, borderRadius: 9 }}>
+                      <div style={{ textAlign: "center", padding: "8px 14px", background: D.card2, borderRadius: 8 }}>
                         <div style={{ fontSize: 20, fontWeight: 700, color: D.green }}>{approvedSubjs.length}</div>
                         <div style={{ fontSize: 11, color: D.muted }}>Aprobadas</div>
                       </div>
-                      <div style={{ textAlign: "center", padding: "8px 14px", background: D.card2, borderRadius: 9 }}>
+                      <div style={{ textAlign: "center", padding: "8px 14px", background: D.card2, borderRadius: 8 }}>
                         <div style={{ fontSize: 20, fontWeight: 700, color: D.accent }}>{programSubjects.length - approvedSubjs.length}</div>
                         <div style={{ fontSize: 11, color: D.muted }}>En curso</div>
                       </div>
-                      <div style={{ textAlign: "center", padding: "8px 14px", background: D.card2, borderRadius: 9, border: "1px solid " + (weightedAvg ? gradeColor(weightedAvg) + "55" : D.border) }}>
+                      <div style={{ textAlign: "center", padding: "8px 14px", background: D.card2, borderRadius: 8, border: "1px solid " + (weightedAvg ? gradeColor(weightedAvg) + "55" : D.border) }}>
                         <div style={{ fontSize: 20, fontWeight: 700, color: weightedAvg ? gradeColor(weightedAvg) : D.muted }}>
                           {fmtGrade(weightedAvg)}
                         </div>
@@ -3022,7 +3060,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                         <div key={y} style={{ flex: 1, padding: "8px 10px", background: D.card2, borderRadius: 8, textAlign: "center" }}>
                           <div style={{ fontSize: 11, color: D.muted, marginBottom: 4 }}>{y}º Año</div>
                           <div style={{ height: 5, borderRadius: 3, background: D.border, overflow: "hidden", marginBottom: 4 }}>
-                            <div style={{ height: "100%", borderRadius: 3, background: D.accent, width: pct + "%", transition: "width 0.5s" }} />
+                            <div style={{ height: "100%", borderRadius: 4, background: D.accent, width: pct + "%", transition: "width 0.5s" }} />
                           </div>
                           <div style={{ fontSize: 12, fontWeight: 600, color: pct === 100 ? D.green : D.text }}>{pct}%</div>
                           <div style={{ fontSize: 10, color: D.muted }}>{yearApproved}/{yearCredits} ECTS</div>
@@ -3124,7 +3162,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   );
                 })()}
                 {chartTip && (
-                  <div style={{ position: "fixed", zIndex: 500, left: chartTip.x + 12, top: chartTip.y + 12, padding: "6px 10px", borderRadius: 7, background: D.card, border: "1px solid " + D.border, boxShadow: "0 4px 12px #0008", fontSize: 12, pointerEvents: "none" }}>
+                  <div style={{ position: "fixed", zIndex: 500, left: chartTip.x + 12, top: chartTip.y + 12, padding: "6px 10px", borderRadius: 6, background: D.card, border: "1px solid " + D.border, boxShadow: "0 4px 12px #0008", fontSize: 12, pointerEvents: "none" }}>
                     <div style={{ fontWeight: 600 }}>{chartTip.name}</div>
                     <div style={{ color: D.muted }}>Nota: {fmtGrade(chartTip.grade)}</div>
                   </div>
@@ -3195,7 +3233,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
                     {scheduleCourses.map(y => (
                       <button key={y} onClick={() => setScheduleCourse(y)}
-                        style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid " + (cursoVisible === y ? D.accent : D.border), background: cursoVisible === y ? D.accent : "none", color: cursoVisible === y ? "#fff" : D.muted, fontSize: 12, cursor: "pointer" }}>
+                        style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid " + (cursoVisible === y ? D.accent : D.border), background: cursoVisible === y ? D.accent : "none", color: cursoVisible === y ? "#fff" : D.muted, fontSize: 12, cursor: "pointer" }}>
                         {academicCourseLabel(y)}
                       </button>
                     ))}
@@ -3296,13 +3334,13 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
           {tab === "stats" && (
             <div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 22 }}>
-                <div style={{ display: "flex", gap: 0, borderRadius: 10, overflow: "hidden", border: "1px solid " + D.border }}>
+                <div style={{ display: "flex", gap: 0, borderRadius: 8, overflow: "hidden", border: "1px solid " + D.border }}>
                   {[["global","Global"],["last7","7 días"],["last30","30 días"],["week","Esta semana"],["month","Este mes"]].map(([k, label], i, arr) => (
                     <button key={k} onClick={() => setStatsPeriod(k)} style={{ padding: "9px 16px", border: "none", background: statsPeriod === k ? D.accent : D.card2, color: statsPeriod === k ? "#fff" : D.muted, fontSize: 13, cursor: "pointer", fontWeight: statsPeriod === k ? 500 : 400, borderRight: i < arr.length - 1 ? "1px solid " + D.border : "none" }}>{label}</button>
                   ))}
                 </div>
                 {academicCourses.length > 0 && (
-                  <div style={{ display: "flex", gap: 0, borderRadius: 10, overflow: "hidden", border: "1px solid " + D.border }}>
+                  <div style={{ display: "flex", gap: 0, borderRadius: 8, overflow: "hidden", border: "1px solid " + D.border }}>
                     {academicCourses.map((y, i, arr) => (
                       <button key={y} onClick={() => setStatsPeriod("course_" + y)}
                         style={{ padding: "9px 14px", border: "none",
@@ -3360,7 +3398,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   <Card>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{historyDate}{historyDate === todayStr ? " — Hoy" : ""}</div>
-                      <button onClick={() => { const sid = selSubject ?? activeSubjects[0]?.id ?? ""; setManualForm({ ...emptyManual, date: historyDate, subjectId: sid, taskId: getDefaultTaskId(sid) }); setShowManualModal(true); }} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 7, border: "1px solid " + D.border, background: D.card2, color: D.accent, cursor: "pointer", flexShrink: 0 }}>＋ Añadir sesión</button>
+                      <button onClick={() => { const sid = selSubject ?? activeSubjects[0]?.id ?? ""; setManualForm({ ...emptyManual, date: historyDate, subjectId: sid, taskId: getDefaultTaskId(sid) }); setShowManualModal(true); }} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid " + D.border, background: D.card2, color: D.accent, cursor: "pointer", flexShrink: 0 }}>＋ Añadir sesión</button>
                     </div>
                     {dayStats.total === 0
                       ? <div style={{ color: D.muted, fontSize: 13, padding: "12px 0", textAlign: "center" }}>Sin sesiones este día</div>
@@ -3377,7 +3415,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                               </div>
                             </div>
                             <div style={{ height: 5, borderRadius: 3, background: D.card2, overflow: "hidden" }}>
-                              <div style={{ height: "100%", borderRadius: 3, background: s.color, width: Math.round((s.minutes / dayStats.total) * 100) + "%", transition: "width 0.5s" }} />
+                              <div style={{ height: "100%", borderRadius: 4, background: s.color, width: Math.round((s.minutes / dayStats.total) * 100) + "%", transition: "width 0.5s" }} />
                             </div>
                           </div>
                         ))}
@@ -3388,7 +3426,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     <Card>
                       <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, color: D.muted }}>Sesiones del día</div>
                       {dayStats.sessions.map(s => (
-                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 7, borderLeft: "3px solid " + (subjects.find(x => x.id === s.subjectId)?.color || s.subjectColor), marginBottom: 5, background: D.card2 }}>
+                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, borderLeft: "3px solid " + (subjects.find(x => x.id === s.subjectId)?.color || s.subjectColor), marginBottom: 5, background: D.card2 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.subjectName}</div>
                             {s.taskTitle && <div style={{ fontSize: 10, color: D.muted }}>{s.taskTitle}</div>}
@@ -3424,7 +3462,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
 
                 {session ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 9, background: D.card2 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, background: D.card2 }}>
                       <div style={{ width: 34, height: 34, borderRadius: "50%", background: D.accent + "33", color: D.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
                         {(session.user?.email || "?")[0].toUpperCase()}
                       </div>
@@ -3446,8 +3484,8 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                         {lastSync ? "Última vez: " + new Date(lastSync).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "Nunca sincronizado"}
                       </span>
                     </div>
-                    {syncMsg && <div style={{ fontSize: 12, color: D.green, padding: "7px 10px", borderRadius: 7, background: D.green + "11" }}>{syncMsg}</div>}
-                    {syncErr && <div style={{ fontSize: 12, color: D.red,   padding: "7px 10px", borderRadius: 7, background: D.red + "11" }}>{syncErr}</div>}
+                    {syncMsg && <div style={{ fontSize: 12, color: D.green, padding: "7px 10px", borderRadius: 6, background: D.green + "11" }}>{syncMsg}</div>}
+                    {syncErr && <div style={{ fontSize: 12, color: D.red,   padding: "7px 10px", borderRadius: 6, background: D.red + "11" }}>{syncErr}</div>}
 
                     <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "8px 12px", borderRadius: 8, background: D.card2 }}>
                       <input type="checkbox" checked={autoSync} onChange={e => setAutoSync(e.target.checked)} style={{ accentColor: D.accent, width: 15, height: 15, cursor: "pointer" }} />
@@ -3478,8 +3516,8 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     <input type="password" placeholder="Contraseña" value={authForm.password} autoComplete="current-password"
                       onChange={e => setAuthForm(f => ({ ...f, password: e.target.value }))}
                       onKeyDown={e => e.key === "Enter" && handleAuth()} style={inp} />
-                    {authError && <div style={{ fontSize: 12, color: D.red, padding: "7px 10px", borderRadius: 7, background: D.red + "11" }}>{authError}</div>}
-                    {authInfo  && <div style={{ fontSize: 12, color: D.green, padding: "7px 10px", borderRadius: 7, background: D.green + "11" }}>{authInfo}</div>}
+                    {authError && <div style={{ fontSize: 12, color: D.red, padding: "7px 10px", borderRadius: 6, background: D.red + "11" }}>{authError}</div>}
+                    {authInfo  && <div style={{ fontSize: 12, color: D.green, padding: "7px 10px", borderRadius: 6, background: D.green + "11" }}>{authInfo}</div>}
                     <button onClick={handleAuth} disabled={authBusy || !authForm.email || !authForm.password}
                       style={{ padding: "9px 0", borderRadius: 8, border: "none", background: (authBusy || !authForm.email || !authForm.password) ? D.card2 : D.accent, color: (authBusy || !authForm.email || !authForm.password) ? D.muted : "#fff", fontSize: 13, fontWeight: 500, cursor: (authBusy || !authForm.email || !authForm.password) ? "not-allowed" : "pointer" }}>
                       {authBusy ? "Un momento…" : authMode === "signup" ? "Crear cuenta" : "Entrar"}
@@ -3495,19 +3533,19 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   {programs.map(p => {
                     const isActive = p.id === activeProgramId;
                     return (
-                      <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 9, background: D.card2, border: "2px solid " + (isActive ? p.color : D.border) }}>
+                      <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8, background: D.card2, border: "2px solid " + (isActive ? p.color : D.border) }}>
                         <div style={{ width: 10, height: 10, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
                           <div style={{ fontSize: 11, color: D.muted }}>{p.type === "career" ? "Grado" : "Máster"} · {p.years} año{p.years !== 1 ? "s" : ""} · {p.semestersPerYear} cuatrimestre{p.semestersPerYear !== 1 ? "s" : ""}/año</div>
                         </div>
-                        {isActive && <span style={{ fontSize: 11, color: p.color, background: p.color + "22", padding: "2px 8px", borderRadius: 5 }}>Activo</span>}
-                        {!isActive && <button onClick={() => setAppState(prev => ({ ...prev, activeProgram: p.id }))} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 7, border: "1px solid " + D.border, background: D.card, color: D.text, cursor: "pointer" }}>Cambiar</button>}
-                        <button onClick={() => { setEditingProgId(p.id); setEditProgForm({ name: p.name, type: p.type, years: p.years, semestersPerYear: p.semestersPerYear, color: p.color }); }} style={{ fontSize: 13, padding: "4px 8px", borderRadius: 7, border: "none", background: "none", color: D.muted, cursor: "pointer" }} title="Editar">✎</button>
+                        {isActive && <span style={{ fontSize: 11, color: p.color, background: p.color + "22", padding: "2px 8px", borderRadius: 6 }}>Activo</span>}
+                        {!isActive && <button onClick={() => setAppState(prev => ({ ...prev, activeProgram: p.id }))} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid " + D.border, background: D.card, color: D.text, cursor: "pointer" }}>Cambiar</button>}
+                        <button onClick={() => { setEditingProgId(p.id); setEditProgForm({ name: p.name, type: p.type, years: p.years, semestersPerYear: p.semestersPerYear, color: p.color }); }} style={{ fontSize: 13, padding: "4px 8px", borderRadius: 6, border: "none", background: "none", color: D.muted, cursor: "pointer" }} title="Editar">✎</button>
                         {/* Borrado lógico, como todo lo demás: quitarlo del array
                             y borrar su programData no deja rastro para el servidor,
                             así que la siguiente sincronización lo volvía a bajar. */}
-                        {programs.length > 1 && <button onClick={() => { if (!isActive && window.confirm(`¿Eliminar el programa "${p.name}" y todos sus datos?`)) setAppState(prev => ({ ...prev, programs: prev.programs.map(x => x.id === p.id ? softDelete(x) : x) })); }} style={{ fontSize: 13, padding: "4px 8px", borderRadius: 7, border: "none", background: "none", color: D.red, cursor: !isActive ? "pointer" : "not-allowed", opacity: isActive ? 0.3 : 1 }} title={isActive ? "No puedes borrar el programa activo" : "Borrar programa"}>✕</button>}
+                        {programs.length > 1 && <button onClick={() => { if (!isActive && window.confirm(`¿Eliminar el programa "${p.name}" y todos sus datos?`)) setAppState(prev => ({ ...prev, programs: prev.programs.map(x => x.id === p.id ? softDelete(x) : x) })); }} style={{ fontSize: 13, padding: "4px 8px", borderRadius: 6, border: "none", background: "none", color: D.red, cursor: !isActive ? "pointer" : "not-allowed", opacity: isActive ? 0.3 : 1 }} title={isActive ? "No puedes borrar el programa activo" : "Borrar programa"}>✕</button>}
                       </div>
                     );
                   })}
@@ -3515,7 +3553,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 {/* Añadir programa */}
                 {!addingProg
                   ? <button onClick={() => setAddingProg(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "1px dashed " + D.border, background: "none", color: D.muted, fontSize: 13, cursor: "pointer", width: "100%" }}>+ Añadir programa</button>
-                  : <div style={{ padding: 14, borderRadius: 9, background: D.card2, border: "1px solid " + D.border, display: "flex", flexDirection: "column", gap: 10 }}>
+                  : <div style={{ padding: 14, borderRadius: 8, background: D.card2, border: "1px solid " + D.border, display: "flex", flexDirection: "column", gap: 10 }}>
                       <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>Nuevo programa</div>
                       <input placeholder="Nombre (ej: Máster en Ingeniería)" value={newProg.name} onChange={e => setNewProg(f => ({ ...f, name: e.target.value }))} style={inp} />
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -3523,7 +3561,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                           <div style={{ fontSize: 11, color: D.muted, marginBottom: 4 }}>Tipo</div>
                           <div style={{ display: "flex", gap: 4 }}>
                             {[["career","Grado"],["master","Máster"]].map(([v,l]) => (
-                              <button key={v} onClick={() => setNewProg(f => ({ ...f, type: v, years: v === "master" ? 2 : 4 }))} style={{ flex: 1, padding: "6px 0", borderRadius: 7, border: "1px solid " + (newProg.type === v ? D.accent : D.border), background: newProg.type === v ? D.accent + "22" : D.card, color: newProg.type === v ? D.accent : D.muted, fontSize: 12, cursor: "pointer" }}>{l}</button>
+                              <button key={v} onClick={() => setNewProg(f => ({ ...f, type: v, years: v === "master" ? 2 : 4 }))} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "1px solid " + (newProg.type === v ? D.accent : D.border), background: newProg.type === v ? D.accent + "22" : D.card, color: newProg.type === v ? D.accent : D.muted, fontSize: 12, cursor: "pointer" }}>{l}</button>
                             ))}
                           </div>
                         </div>
@@ -3531,7 +3569,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                           <div style={{ fontSize: 11, color: D.muted, marginBottom: 4 }}>Años</div>
                           <div style={{ display: "flex", gap: 3 }}>
                             {[1,2,3,4,5,6].map(y => (
-                              <button key={y} onClick={() => setNewProg(f => ({ ...f, years: y }))} style={{ flex: 1, padding: "6px 0", borderRadius: 7, border: "1px solid " + (newProg.years === y ? D.accent : D.border), background: newProg.years === y ? D.accent + "22" : D.card, color: newProg.years === y ? D.accent : D.muted, fontSize: 12, cursor: "pointer" }}>{y}</button>
+                              <button key={y} onClick={() => setNewProg(f => ({ ...f, years: y }))} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "1px solid " + (newProg.years === y ? D.accent : D.border), background: newProg.years === y ? D.accent + "22" : D.card, color: newProg.years === y ? D.accent : D.muted, fontSize: 12, cursor: "pointer" }}>{y}</button>
                             ))}
                           </div>
                         </div>
@@ -3540,7 +3578,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                         <div style={{ fontSize: 11, color: D.muted, marginBottom: 4 }}>Cuatrimestres por año</div>
                         <div style={{ display: "flex", gap: 4 }}>
                           {[1,2,3,4].map(s => (
-                            <button key={s} onClick={() => setNewProg(f => ({ ...f, semestersPerYear: s }))} style={{ flex: 1, padding: "6px 0", borderRadius: 7, border: "1px solid " + (newProg.semestersPerYear === s ? D.accent : D.border), background: newProg.semestersPerYear === s ? D.accent + "22" : D.card, color: newProg.semestersPerYear === s ? D.accent : D.muted, fontSize: 12, cursor: "pointer" }}>{s}</button>
+                            <button key={s} onClick={() => setNewProg(f => ({ ...f, semestersPerYear: s }))} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "1px solid " + (newProg.semestersPerYear === s ? D.accent : D.border), background: newProg.semestersPerYear === s ? D.accent + "22" : D.card, color: newProg.semestersPerYear === s ? D.accent : D.muted, fontSize: 12, cursor: "pointer" }}>{s}</button>
                           ))}
                         </div>
                       </div>
@@ -3579,14 +3617,14 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                       ))}
                     </div>
                   </div>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:9, background:D.card2 }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius: 8, background:D.card2 }}>
                     <span style={{ fontSize:13 }}>Mostrar días vacíos en la línea de tiempo</span>
                     <button onClick={() => setShowEmptyDays(v => !v)} style={{ width:44, height:24, borderRadius:12, border:"none", background:showEmptyDays?D.accent:D.border, cursor:"pointer", position:"relative", transition:"background 0.2s" }}>
                       <div style={{ position:"absolute", top:3, left:showEmptyDays?22:3, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
                     </button>
                   </div>
                   <div>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:9, background:D.card2 }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius: 8, background:D.card2 }}>
                       <span style={{ fontSize:13 }}>Horario: ajustar a la primera y última clase</span>
                       <button onClick={() => setScheduleAuto(v => !v)} style={{ width:44, height:24, borderRadius:12, border:"none", background:scheduleAuto?D.accent:D.border, cursor:"pointer", position:"relative", transition:"background 0.2s" }}>
                         <div style={{ position:"absolute", top:3, left:scheduleAuto?22:3, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
@@ -3612,7 +3650,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 14 }}>⏱ Temporizador</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {[["Sonido al terminar sesión", timerSound, setTimerSound],["Notificación del sistema", timerNotif, setTimerNotif]].map(([label, val, setter]) => (
-                    <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:9, background:D.card2 }}>
+                    <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius: 8, background:D.card2 }}>
                       <span style={{ fontSize:13 }}>{label}</span>
                       <button onClick={() => setter(v => !v)} style={{ width:44, height:24, borderRadius:12, border:"none", background:val?D.accent:D.border, cursor:"pointer", position:"relative", transition:"background 0.2s" }}>
                         <div style={{ position:"absolute", top:3, left:val?22:3, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
@@ -3651,7 +3689,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                       {gradeScale !== "es" && " Solo cambia cómo se muestran: por dentro se guardan en 0–10, así que la media ponderada y los créditos no varían."}
                     </div>
                   </div>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:9, background:D.card2 }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius: 8, background:D.card2 }}>
                     <span style={{ fontSize:13 }}>Iconos de nota (😈🥉🥇👑…)</span>
                     <button onClick={() => setGradeIcons(v => !v)} style={{ width:44, height:24, borderRadius:12, border:"none", background:gradeIcons?D.accent:D.border, cursor:"pointer", position:"relative", transition:"background 0.2s" }}>
                       <div style={{ position:"absolute", top:3, left:gradeIcons?22:3, width:18, height:18, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
@@ -3666,7 +3704,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ fontSize: 13, color: D.muted, marginBottom: 14 }}>Usa ▲▼ para reordenar. Ajustes siempre queda al final.</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {navItems.map((item, idx, arr) => (
-                    <div key={item.k} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", borderRadius:9, background:D.card2, border:"1px solid "+D.border }}>
+                    <div key={item.k} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", borderRadius: 8, background:D.card2, border:"1px solid "+D.border }}>
                       <span style={{ fontSize:14, width:22, flexShrink:0 }}>{item.icon}</span>
                       <span style={{ fontSize:13, flex:1 }}>{item.label}</span>
                       <div style={{ display:"flex", gap:4 }}>
@@ -3684,14 +3722,14 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ fontSize: 13, color: D.muted, marginBottom: 14 }}>Elige cuántos meses se muestran en la pestaña Calendario.</div>
                 <div style={{ display: "flex", gap: 8 }}>
                   {[["single", "1 mes"], ["dual", "2 meses"]].map(([v, label]) => (
-                    <button key={v} onClick={() => setCalendarView(v)} style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid " + (calendarView === v ? D.accent : D.border), background: calendarView === v ? D.accent + "22" : D.card2, color: calendarView === v ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: calendarView === v ? 600 : 400 }}>{label}</button>
+                    <button key={v} onClick={() => setCalendarView(v)} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid " + (calendarView === v ? D.accent : D.border), background: calendarView === v ? D.accent + "22" : D.card2, color: calendarView === v ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: calendarView === v ? 600 : 400 }}>{label}</button>
                   ))}
                 </div>
               </Card>
               <Card>
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>📤 Exportar datos</div>
                 <div style={{ fontSize: 13, color: D.muted, marginBottom: 16 }}>Descarga una copia de seguridad de todos tus datos en formato JSON.</div>
-                <button onClick={() => setShowExportConfirm(true)} style={{ padding: "10px 24px", borderRadius: 9, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Descargar backup</button>
+                <button onClick={() => setShowExportConfirm(true)} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Descargar backup</button>
               </Card>
               <Card>
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>🔁 Copia automática al cerrar</div>
@@ -3702,7 +3740,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
 
                 {backupDir ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 9, background: D.card2 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8, background: D.card2 }}>
                       <span style={{ fontSize: 15 }}>📁</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12, color: D.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={backupDir}>{backupDir}</div>
@@ -3720,7 +3758,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     </div>
                   </div>
                 ) : (
-                  <button onClick={elegirCarpetaBackup} style={{ padding: "10px 24px", borderRadius: 9, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+                  <button onClick={elegirCarpetaBackup} style={{ padding: "10px 24px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
                     Elegir carpeta…
                   </button>
                 )}
@@ -3736,12 +3774,32 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
               <Card>
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>📥 Importar datos</div>
                 <div style={{ fontSize: 13, color: D.muted, marginBottom: 16 }}>Restaura tus datos desde un archivo de backup. <strong style={{ color: D.red }}>Esto sobreescribirá todos los datos actuales.</strong></div>
-                <label style={{ display: "inline-block", padding: "10px 24px", borderRadius: 9, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 14, cursor: "pointer", fontWeight: 500 }}>
+                <label style={{ display: "inline-block", padding: "10px 24px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 14, cursor: "pointer", fontWeight: 500 }}>
                   Seleccionar archivo
                   <input type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
                 </label>
                 {importSuccess && <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "#0a2e1e", border: "1px solid " + D.green + "44", color: D.green, fontSize: 13 }}>✓ Datos importados correctamente.</div>}
                 {importError  && <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: D.red + "11", border: "1px solid " + D.red + "44", color: D.red, fontSize: 13 }}>✕ {importError}</div>}
+              </Card>
+              <Card>
+                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>📆 Calendario (.ics)</div>
+                <div style={{ fontSize: 13, color: D.muted, marginBottom: 16 }}>
+                  Exporta tus exámenes y entregas a un archivo que entienden Google Calendar, Apple Calendar y el calendario del móvil.
+                  Al importar, lo que venga de fuera entra como <strong style={{ color: D.text }}>recordatorio sin asignatura</strong>; reimportar el mismo archivo actualiza, no duplica.
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button onClick={exportIcs} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Exportar calendario</button>
+                  <label style={{ display: "inline-block", padding: "10px 24px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 14, cursor: "pointer", fontWeight: 500 }}>
+                    Importar .ics
+                    <input type="file" accept=".ics,text/calendar" onChange={importIcs} style={{ display: "none" }} />
+                  </label>
+                </div>
+                {icsMsg && (
+                  <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, fontSize: 13,
+                                background: icsMsg.startsWith("✓") ? "#0a2e1e" : D.red + "11",
+                                border: "1px solid " + (icsMsg.startsWith("✓") ? D.green + "44" : D.red + "44"),
+                                color: icsMsg.startsWith("✓") ? D.green : D.red }}>{icsMsg}</div>
+                )}
               </Card>
               <Card>
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4, color: D.red }}>🗑 Borrar datos</div>
@@ -3752,7 +3810,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     ["tasks",   "✅ Borrar tareas",      "Borra todas las tareas. El resto se conserva."],
                     ["all",     "⚠ Borrar todo",         "Elimina TODOS los datos. Irreversible."],
                   ].map(([type, title, desc]) => (
-                    <button key={type} onClick={() => setShowConfirmClear(type)} style={{ padding: 11, borderRadius: 10, border: "1px solid " + (type === "all" ? D.red + "44" : D.border), background: type === "all" ? D.red + "11" : D.card2, color: type === "all" ? D.red : D.text, cursor: "pointer", fontSize: 13, textAlign: "left" }}>
+                    <button key={type} onClick={() => setShowConfirmClear(type)} style={{ padding: 11, borderRadius: 8, border: "1px solid " + (type === "all" ? D.red + "44" : D.border), background: type === "all" ? D.red + "11" : D.card2, color: type === "all" ? D.red : D.text, cursor: "pointer", fontSize: 13, textAlign: "left" }}>
                       <div style={{ fontWeight: 500 }}>{title}</div>
                       <div style={{ fontSize: 11, color: type === "all" ? D.red + "99" : D.muted, marginTop: 2 }}>{desc}</div>
                     </button>
@@ -3853,7 +3911,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ display: "flex", gap: 4 }}>
                   {Array.from({ length: activeProgram?.years ?? 4 }, (_, i) => i + 1).map(y => (
                     <button key={y} onClick={() => setSubjForm(f => ({ ...f, year: f.year === y ? null : y }))}
-                      style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: "1px solid " + (subjForm.year === y ? D.accent : D.border), background: subjForm.year === y ? D.accent + "22" : D.card2, color: subjForm.year === y ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: subjForm.year === y ? 600 : 400 }}>
+                      style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: "1px solid " + (subjForm.year === y ? D.accent : D.border), background: subjForm.year === y ? D.accent + "22" : D.card2, color: subjForm.year === y ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: subjForm.year === y ? 600 : 400 }}>
                       {y}º
                     </button>
                   ))}
@@ -3871,7 +3929,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                         const next = cur.includes(s) ? cur.filter(x => x !== s) : [...cur, s].sort();
                         return { ...f, semester: next.length === 0 ? null : next, annual: false };
                       })}
-                        style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: "1px solid " + (active ? D.accent : D.border), background: active ? D.accent + "22" : D.card2, color: active ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: active ? 600 : 400 }}>
+                        style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: "1px solid " + (active ? D.accent : D.border), background: active ? D.accent + "22" : D.card2, color: active ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: active ? 600 : 400 }}>
                         {s}º C.
                       </button>
                     );
@@ -4017,7 +4075,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Años</div>
                 <div style={{ display: "flex", gap: 3 }}>
                   {[1,2,3,4,5,6].map(y => (
-                    <button key={y} onClick={() => setEditProgForm(f => ({ ...f, years: y }))} style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: "1px solid " + (editProgForm.years === y ? D.accent : D.border), background: editProgForm.years === y ? D.accent + "22" : D.card2, color: editProgForm.years === y ? D.accent : D.muted, fontSize: 12, cursor: "pointer" }}>{y}</button>
+                    <button key={y} onClick={() => setEditProgForm(f => ({ ...f, years: y }))} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: "1px solid " + (editProgForm.years === y ? D.accent : D.border), background: editProgForm.years === y ? D.accent + "22" : D.card2, color: editProgForm.years === y ? D.accent : D.muted, fontSize: 12, cursor: "pointer" }}>{y}</button>
                   ))}
                 </div>
               </div>
@@ -4025,7 +4083,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Cuatrimestres/año</div>
                 <div style={{ display: "flex", gap: 3 }}>
                   {[1,2,3,4].map(s => (
-                    <button key={s} onClick={() => setEditProgForm(f => ({ ...f, semestersPerYear: s }))} style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: "1px solid " + (editProgForm.semestersPerYear === s ? D.accent : D.border), background: editProgForm.semestersPerYear === s ? D.accent + "22" : D.card2, color: editProgForm.semestersPerYear === s ? D.accent : D.muted, fontSize: 12, cursor: "pointer" }}>{s}</button>
+                    <button key={s} onClick={() => setEditProgForm(f => ({ ...f, semestersPerYear: s }))} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: "1px solid " + (editProgForm.semestersPerYear === s ? D.accent : D.border), background: editProgForm.semestersPerYear === s ? D.accent + "22" : D.card2, color: editProgForm.semestersPerYear === s ? D.accent : D.muted, fontSize: 12, cursor: "pointer" }}>{s}</button>
                   ))}
                 </div>
               </div>
@@ -4072,7 +4130,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
       {showConfirmClear && (
         <Modal onClose={() => setShowConfirmClear(false)}>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 18, color: D.text }}>Borrar datos</div>
-          <div style={{ padding: 14, borderRadius: 10, background: D.red + "11", border: "1px solid " + D.red + "44", marginBottom: 18, fontSize: 13, color: D.red }}>
+          <div style={{ padding: 14, borderRadius: 8, background: D.red + "11", border: "1px solid " + D.red + "44", marginBottom: 18, fontSize: 13, color: D.red }}>
             {showConfirmClear === "all"
               ? "Se eliminarán TODOS los datos: sesiones, tareas y asignaturas. Esta acción no se puede deshacer."
               : showConfirmClear === "subjects"

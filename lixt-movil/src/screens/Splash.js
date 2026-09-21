@@ -50,7 +50,7 @@ export default function Splash({ label }) {
 
       <View style={{ width: ANCHO_BARRA, height: 3, borderRadius: 3, backgroundColor: D.card2, overflow: "hidden" }}>
         <Animated.View style={{
-          width: ANCHO_BARRA * 0.4, height: "100%", borderRadius: 3, backgroundColor: D.accent,
+          width: ANCHO_BARRA * 0.4, height: "100%", borderRadius: 4, backgroundColor: D.accent,
           transform: [{ translateX: barra.interpolate({ inputRange: [0, 1], outputRange: [-ANCHO_BARRA * 0.4, ANCHO_BARRA] }) }],
         }} />
       </View>

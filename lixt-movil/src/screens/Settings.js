@@ -13,15 +13,23 @@
 //   · Exámenes en la barra lateral — no hay barra lateral.
 //   · Días vacíos en la línea de tiempo — no hay línea de tiempo.
 //   · Vista del calendario (1 o 2 meses) — en vertical siempre cabe uno.
-//   · Crear/editar/borrar programas y exportar/importar backup — se quedan en el
-//     PC (el backup necesitaría selector de archivos nativo, o sea dependencias
-//     nuevas y recompilar el APK).
+//   · Crear/editar/borrar programas y exportar/importar el backup JSON — se
+//     quedan en el PC. El backup completo pisa TODOS los datos, y eso no se hace
+//     desde un móvil sin querer.
+//
+// El calendario .ics sí está aquí: exportar escribe en la caché y abre el menú
+// de compartir de Android, e importar usa el selector del sistema. Eso trajo
+// expo-file-system, expo-sharing y expo-document-picker, que son nativos: desde
+// 1.4.5 el móvil ya no arranca en Expo Go a pelo, hay que recompilar el APK.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import React, { useState } from "react";
 import { Modal, View, Text, TouchableOpacity, Pressable, ScrollView, Alert, ActivityIndicator } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { signOut } from "../supabase";
-import { GRADE_SCALES } from "../logic";
+import { GRADE_SCALES, today, tasksToIcs, parseIcs, icsToTasks } from "../logic";
 import { D, BG_LABELS, VELO } from "../theme";
 import { TimeField } from "./DateTimeField";
 
@@ -43,10 +51,58 @@ export default function Settings({
   settings, updateSettings,
   grid, setGrid,
   programs = [], activeProgram, onSelectProgram,
+  data = { subjects: [], tasks: [] }, mutate,
   sync, syncing, lastSync,
 }) {
   // Qué diálogo de opciones está abierto (null = ninguno)
   const [dialogo, setDialogo] = useState(null);
+
+  // ── Calendario (.ics) ──
+  // Se escribe en la caché y se abre el menú de compartir: así no hacen falta
+  // permisos de almacenamiento ni un selector de carpeta, que en Android es un
+  // lío. El archivo de la caché lo limpia el sistema cuando quiera.
+  async function exportarIcs() {
+    try {
+      const archivo = new File(Paths.cache, `lixt-calendario-${today()}.ics`);
+      if (archivo.exists) archivo.delete();
+      archivo.create();
+      archivo.write(tasksToIcs(data.tasks, data.subjects));
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("Calendario", "Este móvil no tiene con qué compartir el archivo.");
+        return;
+      }
+      await Sharing.shareAsync(archivo.uri, {
+        mimeType: "text/calendar", UTI: "com.apple.ical.ics", dialogTitle: "Calendario de LixT",
+      });
+    } catch (e) {
+      Alert.alert("No he podido exportar", String(e?.message || e));
+    }
+  }
+
+  // El selector va con "*/*" a propósito: filtrando por text/calendar, Android
+  // esconde los .ics que vienen de descargas o de correo. Si el archivo no es un
+  // calendario, `parseIcs` devuelve cero eventos y no se toca nada.
+  async function importarIcs() {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+      if (res.canceled || !res.assets?.length) return;
+      const eventos = parseIcs(await new File(res.assets[0].uri).text());
+      if (!eventos.length) {
+        Alert.alert("Calendario", "No he encontrado ningún evento en ese archivo.");
+        return;
+      }
+      const nuevas = icsToTasks(eventos, { programId: activeProgram, tasks: data.tasks });
+      const porId  = new Map(nuevas.map(t => [String(t.id), t]));
+      mutate("tasks", prev => {
+        const vistos = new Set(prev.map(t => String(t.id)));
+        return [...prev.map(t => porId.get(String(t.id)) || t), ...nuevas.filter(t => !vistos.has(String(t.id)))];
+      });
+      const n = eventos.length;
+      Alert.alert("Calendario", `${n} evento${n === 1 ? "" : "s"} importado${n === 1 ? "" : "s"}.`);
+    } catch (e) {
+      Alert.alert("No he podido importar", String(e?.message || e));
+    }
+  }
 
   function confirmSignOut() {
     Alert.alert("Cerrar sesión", "Tus datos locales no se borran.", [
@@ -196,11 +252,25 @@ export default function Settings({
             </>
           )}
 
+          {/* ── Calendario ── */}
+          <Categoria titulo="Calendario" />
+          <Fila
+            titulo="Exportar a .ics"
+            resumen="Tus exámenes y entregas, para Google Calendar o el calendario del móvil."
+            onPress={exportarIcs}
+          />
+          <Fila
+            titulo="Importar un .ics"
+            resumen="Los eventos entran como recordatorios sin asignatura."
+            onPress={importarIcs}
+          />
+          <Pie>Reimportar el mismo archivo actualiza los eventos en vez de duplicarlos.</Pie>
+
           {/* ── Salir ── */}
           <Categoria titulo="" />
           <Fila titulo="Cerrar sesión" resumen="Tus datos locales no se borran." onPress={confirmSignOut} peligro />
 
-          <Text style={{ color: D.muted, fontSize: 11, textAlign: "center", marginTop: 20 }}>LixT v1.4.0</Text>
+          <Text style={{ color: D.muted, fontSize: 11, textAlign: "center", marginTop: 20 }}>LixT v1.4.5</Text>
         </ScrollView>
 
         {/* Diálogos de opciones */}
@@ -285,7 +355,7 @@ function DialogoRadio({ visible, titulo, opciones, valor, onElegir, onClose, mul
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={{ flex: 1, backgroundColor: VELO, justifyContent: "center", padding: 28 }} onPress={onClose}>
-        <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderRadius: 18, paddingVertical: 20, maxHeight: "80%" }}>
+        <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderRadius: 16, paddingVertical: 20, maxHeight: "80%" }}>
           <Text style={{ color: D.text, fontSize: 17, fontWeight: "600", paddingHorizontal: 24, marginBottom: 10 }}>{titulo}</Text>
           <ScrollView>
             {opciones.map(([v, label, desc]) => {

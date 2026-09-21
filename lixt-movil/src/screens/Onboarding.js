@@ -78,7 +78,7 @@ function Label({ children }) {
 function Chip({ active, onPress, label }) {
   return (
     <TouchableOpacity onPress={onPress}
-      style={{ paddingVertical: 9, paddingHorizontal: 15, borderRadius: 9, backgroundColor: active ? D.accent + "22" : D.card2, borderWidth: 1, borderColor: active ? D.accent : D.border }}>
+      style={{ paddingVertical: 9, paddingHorizontal: 15, borderRadius: 8, backgroundColor: active ? D.accent + "22" : D.card2, borderWidth: 1, borderColor: active ? D.accent : D.border }}>
       <Text style={{ color: active ? D.accent : D.muted, fontSize: 13, fontWeight: active ? "600" : "400" }}>{label}</Text>
     </TouchableOpacity>
   );

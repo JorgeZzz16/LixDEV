@@ -109,10 +109,10 @@ export default function Tasks({ data, sync, syncing, mutate }) {
           return (
             <View key={t.id} style={{
               flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: D.card,
-              borderRadius: 10, borderWidth: 1, borderColor: D.border, borderLeftWidth: 4, borderLeftColor: subj?.color || D.muted,
+              borderRadius: 8, borderWidth: 1, borderColor: D.border, borderLeftWidth: 4, borderLeftColor: subj?.color || D.muted,
               padding: 12, marginBottom: 7, opacity: done ? 0.55 : 1,
             }}>
-              <TouchableOpacity onPress={() => toggleStatus(t)} style={{ width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: done ? D.accent : D.border, backgroundColor: done ? D.accent : "transparent", alignItems: "center", justifyContent: "center" }}>
+              <TouchableOpacity onPress={() => toggleStatus(t)} style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 2, borderColor: done ? D.accent : D.border, backgroundColor: done ? D.accent : "transparent", alignItems: "center", justifyContent: "center" }}>
                 {done && <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>✓</Text>}
               </TouchableOpacity>
 
@@ -149,7 +149,7 @@ export default function Tasks({ data, sync, syncing, mutate }) {
 
 function Chip({ active, onPress, label, dot }) {
   return (
-    <TouchableOpacity onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 6, paddingHorizontal: 11, borderRadius: 7, backgroundColor: active ? D.accent + "22" : D.card2, borderWidth: 1, borderColor: active ? D.accent : D.border }}>
+    <TouchableOpacity onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 6, paddingHorizontal: 11, borderRadius: 6, backgroundColor: active ? D.accent + "22" : D.card2, borderWidth: 1, borderColor: active ? D.accent : D.border }}>
       {dot && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dot }} />}
       <Text style={{ color: active ? D.accent : D.muted, fontSize: 12, fontWeight: active ? "600" : "400" }}>{label}</Text>
     </TouchableOpacity>
@@ -158,7 +158,7 @@ function Chip({ active, onPress, label, dot }) {
 
 function Badge({ label, color }) {
   return (
-    <View style={{ backgroundColor: D.card2, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}>
+    <View style={{ backgroundColor: D.card2, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
       <Text style={{ color, fontSize: 10 }}>{label}</Text>
     </View>
   );

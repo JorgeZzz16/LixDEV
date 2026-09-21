@@ -34,7 +34,7 @@ export default function ScheduleModal({ visible, slot, subjects, day, onClose, o
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={{ flex: 1, backgroundColor: VELO, justifyContent: "flex-end" }} onPress={onClose}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 28 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, paddingBottom: 28 }}>
 
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
               <Text style={{ color: D.text, fontSize: 17, fontWeight: "700", flex: 1 }}>
@@ -48,7 +48,7 @@ export default function ScheduleModal({ visible, slot, subjects, day, onClose, o
               <View style={{ flexDirection: "row", gap: 7 }}>
                 {subjects.map(s => (
                   <TouchableOpacity key={s.id} onPress={() => setSubjectId(s.id)}
-                    style={{ paddingVertical: 9, paddingHorizontal: 14, borderRadius: 9, backgroundColor: subjectId === s.id ? s.color + "33" : D.card2, borderWidth: 1, borderColor: subjectId === s.id ? s.color : D.border }}>
+                    style={{ paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8, backgroundColor: subjectId === s.id ? s.color + "33" : D.card2, borderWidth: 1, borderColor: subjectId === s.id ? s.color : D.border }}>
                     <Text style={{ color: subjectId === s.id ? D.text : D.muted, fontSize: 13, fontWeight: subjectId === s.id ? "600" : "400" }}>
                       {s.acronym || s.name}
                     </Text>

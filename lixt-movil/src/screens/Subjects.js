@@ -207,12 +207,12 @@ function SubjectCard({ subj, data, expanded, onToggle, onEdit, onApprove, onArch
           </Text>
         </View>
         {subj.approved && (
-          <View style={{ backgroundColor: D.green + "22", borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}>
+          <View style={{ backgroundColor: D.green + "22", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
             <Text style={{ color: D.green, fontSize: 10, fontWeight: "700" }}>✓</Text>
           </View>
         )}
         {finalGrade !== null && (
-          <View style={{ backgroundColor: D.card, borderRadius: 20, borderWidth: 1, borderColor: D.border, paddingVertical: 3, paddingHorizontal: 9 }}>
+          <View style={{ backgroundColor: D.card, borderRadius: 999, borderWidth: 1, borderColor: D.border, paddingVertical: 3, paddingHorizontal: 9 }}>
             <Text style={{ color: gradeColor(finalGrade), fontSize: 12, fontWeight: "700" }}>{fmtGrade(finalGrade)}{medal ? " " + medal : ""}</Text>
           </View>
         )}
@@ -267,12 +267,12 @@ function CompactRow({ s, tone, onEdit, onRestore, onDelete }) {
   const archived = tone === "archived";
   return (
     <View style={{
-      flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 9, marginBottom: 6,
+      flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 8, marginBottom: 6,
       backgroundColor: D.card, borderWidth: 1, borderColor: archived ? D.border : D.green + "44", opacity: archived ? 0.65 : 1,
     }}>
       <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: s.color }} />
       <Text style={{ flex: 1, color: archived ? D.muted : D.text, fontSize: 12, textDecorationLine: archived ? "line-through" : "none" }} numberOfLines={1}>{s.name}</Text>
-      <Text style={{ fontSize: 9, color: archived ? D.muted : D.green, backgroundColor: (archived ? D.card2 : D.green + "22"), paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 }}>
+      <Text style={{ fontSize: 9, color: archived ? D.muted : D.green, backgroundColor: (archived ? D.card2 : D.green + "22"), paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
         {archived ? "📁" : "✓"}
       </Text>
       <TouchableOpacity onPress={onEdit}><Text style={{ color: D.muted, fontSize: 13 }}>✎</Text></TouchableOpacity>
@@ -284,7 +284,7 @@ function CompactRow({ s, tone, onEdit, onRestore, onDelete }) {
 
 function FilterChip({ active, onPress, label }) {
   return (
-    <TouchableOpacity onPress={onPress} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 7, backgroundColor: active ? D.accent + "22" : D.card2, borderWidth: 1, borderColor: active ? D.accent : D.border }}>
+    <TouchableOpacity onPress={onPress} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, backgroundColor: active ? D.accent + "22" : D.card2, borderWidth: 1, borderColor: active ? D.accent : D.border }}>
       <Text style={{ color: active ? D.accent : D.muted, fontSize: 12, fontWeight: active ? "600" : "400" }}>{label}</Text>
     </TouchableOpacity>
   );
@@ -292,7 +292,7 @@ function FilterChip({ active, onPress, label }) {
 
 function ActionBtn({ label, color, onPress }) {
   return (
-    <TouchableOpacity onPress={onPress} style={{ borderWidth: 1, borderColor: D.border, borderRadius: 7, paddingVertical: 6, paddingHorizontal: 10 }}>
+    <TouchableOpacity onPress={onPress} style={{ borderWidth: 1, borderColor: D.border, borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10 }}>
       <Text style={{ color, fontSize: 11, fontWeight: "500" }}>{label}</Text>
     </TouchableOpacity>
   );

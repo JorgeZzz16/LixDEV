@@ -57,7 +57,7 @@ export const VELO = "#000d";
 // Alto y tipografía de TODO lo que sea un campo, escriba o no el usuario: cajas
 // de texto, selectores de fecha y de hora.
 const campoBase = () => ({
-  backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, borderRadius: 10,
+  backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, borderRadius: 8,
   paddingVertical: 12, paddingHorizontal: 14,
 });
 
@@ -79,12 +79,12 @@ export const campo = () => ({
 // Botones de la fila de acciones de un modal. Estaban copiados en TaskModal,
 // SubjectModal y ScheduleModal, iguales los tres.
 export const botonPrimario = () => ({
-  flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: D.accent, alignItems: "center",
+  flex: 1, paddingVertical: 13, borderRadius: 8, backgroundColor: D.accent, alignItems: "center",
 });
 export const botonSecundario = () => ({
-  flex: 1, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: D.border, alignItems: "center",
+  flex: 1, paddingVertical: 13, borderRadius: 8, borderWidth: 1, borderColor: D.border, alignItems: "center",
 });
 export const botonPeligro = () => ({
-  paddingVertical: 13, paddingHorizontal: 16, borderRadius: 10,
+  paddingVertical: 13, paddingHorizontal: 16, borderRadius: 8,
   borderWidth: 1, borderColor: D.red + "44", backgroundColor: D.red + "11",
 });

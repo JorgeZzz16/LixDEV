@@ -97,7 +97,7 @@ export default function Stats({ data, sync, syncing }) {
             <Text style={{ color: D.muted, fontSize: 12 }}>{fmtTime(s.minutes)}</Text>
           </View>
           <View style={{ height: 6, borderRadius: 3, backgroundColor: D.card2, overflow: "hidden" }}>
-            <View style={{ height: "100%", width: `${(s.minutes / maxMin) * 100}%`, backgroundColor: s.color, borderRadius: 3 }} />
+            <View style={{ height: "100%", width: `${(s.minutes / maxMin) * 100}%`, backgroundColor: s.color, borderRadius: 4 }} />
           </View>
         </View>
       ))}

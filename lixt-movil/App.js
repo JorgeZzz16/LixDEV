@@ -165,6 +165,8 @@ export default function App() {
         programs={store.state?.programs || []}
         activeProgram={store.state?.activeProgram}
         onSelectProgram={store.setActiveProgram}
+        data={store.data}
+        mutate={store.mutate}
         sync={store.sync}
         syncing={store.syncing}
         lastSync={store.lastSync}

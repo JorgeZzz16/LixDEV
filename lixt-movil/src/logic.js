@@ -443,3 +443,178 @@ export function studyStreak(sessions, todayStr = today()) {
   }
   return { dias: n, hoy };
 }
+
+// ─── Calendario (.ics) ─────────────────────────────────────────────────────────
+//
+// Importar y exportar tareas en iCalendar (RFC 5545), que es lo que entienden
+// Google Calendar, Apple Calendar y el calendario de Android.
+//
+// Las horas van SIN zona horaria ("hora flotante"). El resto de la app guarda
+// fechas y horas como texto local a propósito (ver `parseDate`), y meter UTC
+// aquí devolvería justo el desfase de día que ya costó un bug. Un evento
+// flotante se muestra a su hora en el reloj de quien lo abre, que es lo que
+// quieres para un examen a las 16:00.
+
+// RFC 5545 §3.3.11: dentro de un texto hay que escapar \ ; , y los saltos.
+const icsEscape = txt => String(txt ?? "")
+  .replace(/\\/g, "\\\\")
+  .replace(/;/g, "\\;")
+  .replace(/,/g, "\\,")
+  .replace(/\r?\n/g, "\\n");
+
+const icsUnescape = txt => String(txt ?? "")
+  .replace(/\\([\\;,nN])/g, (_, c) => (c === "n" || c === "N" ? "\n" : c));
+
+// §3.1: ninguna línea pasa de 75 octetos; las de continuación empiezan por
+// espacio. Aquí se cuentan caracteres, no octetos, así que una línea llena de
+// acentos se queda algo corta — a ningún lector le importa.
+function icsFold(linea) {
+  if (linea.length <= 75) return linea;
+  const trozos = [linea.slice(0, 75)];
+  for (let i = 75; i < linea.length; i += 74) trozos.push(" " + linea.slice(i, i + 74));
+  return trozos.join("\r\n");
+}
+
+// "18:00" → ["180000"]; "18:00-20:30" → ["180000", "203000"]; "" → null.
+function icsHoras(hour) {
+  const m = String(hour ?? "").trim().match(/^(\d{1,2}):(\d{2})(?:\s*-\s*(\d{1,2}):(\d{2}))?$/);
+  if (!m) return null;
+  const hhmmss = (h, mm) => pad(+h) + mm + "00";
+  return m[3] ? [hhmmss(m[1], m[2]), hhmmss(m[3], m[4])] : [hhmmss(m[1], m[2])];
+}
+
+const icsDia = ds => String(ds).replace(/-/g, "");
+
+function icsDiaSiguiente(ds) {
+  const d = parseDate(ds);
+  d.setDate(d.getDate() + 1);
+  return fmtDate(d);
+}
+
+// Tareas → texto .ics. `subjects` solo se usa para poner el nombre de la
+// asignatura en la descripción del evento.
+export function tasksToIcs(tasks, subjects = []) {
+  const nombreAsig = id => (subjects || []).find(s => String(s.id) === String(id))?.name || "";
+  const sello = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const l = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//LixT//ES", "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH", "X-WR-CALNAME:LixT",
+  ];
+
+  for (const t of tasks || []) {
+    if (!t || t.deleted_at || !t.dueDate) continue;
+    const horas = icsHoras(t.hour);
+    l.push("BEGIN:VEVENT");
+    l.push(`UID:lixt-${t.id}@lixt.app`);
+    l.push(`DTSTAMP:${sello}`);
+    l.push(`SUMMARY:${icsEscape(t.title || "Tarea")}`);
+    if (!horas) {
+      // Evento de día completo. DTEND es exclusivo: el día siguiente.
+      l.push(`DTSTART;VALUE=DATE:${icsDia(t.dueDate)}`);
+      l.push(`DTEND;VALUE=DATE:${icsDia(icsDiaSiguiente(t.dueDate))}`);
+    } else {
+      l.push(`DTSTART:${icsDia(t.dueDate)}T${horas[0]}`);
+      // Sin hora de fin (o una que no avanza) se le da una hora de duración,
+      // que evita tener que sumar fechas a mano al cruzar la medianoche.
+      if (horas[1] && horas[1] > horas[0]) l.push(`DTEND:${icsDia(t.dueDate)}T${horas[1]}`);
+      else l.push("DURATION:PT1H");
+    }
+    const asig = nombreAsig(t.subjectId);
+    const desc = [asig, t.type].filter(Boolean).join(" · ");
+    if (desc) l.push(`DESCRIPTION:${icsEscape(desc)}`);
+    if (t.type) l.push(`CATEGORIES:${icsEscape(t.type)}`);
+    l.push("END:VEVENT");
+  }
+
+  l.push("END:VCALENDAR");
+  return l.map(icsFold).join("\r\n") + "\r\n";
+}
+
+// "20260908T180000" / "...Z" / "20260908" → { date, hour }.
+function icsMomento(valor) {
+  const m = String(valor).trim()
+    .match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(?:\d{2})?(Z)?)?$/);
+  if (!m) return null;
+  // Solo se convierte lo que viene marcado en UTC. Un TZID de otra zona se toma
+  // como hora local: hacerlo bien pedía una base de datos de zonas horaria
+  // entera, y en la práctica los calendarios que vas a importar son de aquí.
+  if (m[6]) {
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+    return { date: fmtDate(d), hour: `${pad(d.getHours())}:${pad(d.getMinutes())}` };
+  }
+  return { date: `${m[1]}-${m[2]}-${m[3]}`, hour: m[4] ? `${m[4]}:${m[5]}` : "" };
+}
+
+// Texto .ics → [{ uid, title, date, hour }]. Lo que no entiende se ignora.
+export function parseIcs(texto) {
+  // Desplegar primero: una línea larga viene partida y continúa con un espacio.
+  const plano = String(texto || "").replace(/\r\n/g, "\n").replace(/\n[ \t]/g, "");
+  const eventos = [];
+  let ev = null, dentroDe = null;
+
+  for (const bruta of plano.split("\n")) {
+    const linea = bruta.trim();
+    if (!linea) continue;
+
+    // Un VEVENT puede llevar un VALARM dentro, y un VALARM tiene su propio
+    // SUMMARY. Sin saltárselo, la alarma pisaría el título del evento.
+    if (dentroDe) { if (linea === `END:${dentroDe}`) dentroDe = null; continue; }
+    if (linea === "BEGIN:VEVENT") { ev = {}; continue; }
+    if (linea === "END:VEVENT")   { if (ev?.date) eventos.push(ev); ev = null; continue; }
+    if (ev && linea.startsWith("BEGIN:")) { dentroDe = linea.slice(6); continue; }
+    if (!ev) continue;
+
+    const i = linea.indexOf(":");
+    if (i < 0) continue;
+    const campo = linea.slice(0, i).split(";")[0].toUpperCase();
+    const valor = linea.slice(i + 1);
+
+    if (campo === "UID")          ev.uid = valor.trim();
+    else if (campo === "SUMMARY") ev.title = icsUnescape(valor).trim();
+    else if (campo === "DTSTART") Object.assign(ev, icsMomento(valor) || {});
+  }
+  return eventos;
+}
+
+// Id estable para un evento importado.
+//
+// Los que salieron de LixT recuperan su id original, así que reimportar el mismo
+// archivo actualiza la tarea en vez de duplicarla. Los de fuera sacan un id
+// derivado del UID, con el mismo efecto y sin tener que guardar una tabla de
+// correspondencias en ningún sitio.
+function idDeEvento(ev) {
+  const propio = String(ev.uid || "").match(/^lixt-(.+)@lixt\.app$/);
+  if (propio) return propio[1];
+  // ponytail: hash djb2 del UID. Dos UID distintos con el mismo hash fundirían
+  // sus eventos; con unos cientos es despreciable. Si algún día importas miles,
+  // guarda el UID en una columna y busca por ella.
+  const clave = ev.uid || `${ev.title}|${ev.date}`;
+  let h = 5381;
+  for (let i = 0; i < clave.length; i++) h = ((h * 33) ^ clave.charCodeAt(i)) >>> 0;
+  return "ics-" + h.toString(36);
+}
+
+// Eventos → tareas listas para fusionar con las que ya hay.
+//
+// Lo que viene de fuera entra como recordatorio sin asignatura: un evento de
+// Google no trae ni asignatura ni peso ni nota, y adivinarlos se equivocaría.
+// Si la tarea ya existe se le cambian solo título, fecha y hora.
+export function icsToTasks(eventos, { programId = null, tasks = [] } = {}) {
+  const porId = new Map((tasks || []).map(t => [String(t.id), t]));
+  return (eventos || []).filter(ev => ev?.date).map(ev => {
+    const id = idDeEvento(ev);
+    const previa = porId.get(id);
+    return touch({
+      ...(previa || {
+        programId, subjectId: null, type: "recordatorio",
+        status: "pendiente", priority: "media",
+        gradeMode: null, grade: null, pct: null, pts: null,
+      }),
+      id,
+      title: ev.title || "Evento",
+      dueDate: ev.date,
+      hour: ev.hour || "",
+      deleted_at: null,
+    });
+  });
+}

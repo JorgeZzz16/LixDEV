@@ -35,7 +35,7 @@ export default function Auth() {
       <Text style={{ color: D.text, fontSize: 30, fontWeight: "700", marginBottom: 6 }}>LixT</Text>
       <Text style={{ color: D.muted, fontSize: 14, marginBottom: 28 }}>Entra con la misma cuenta del ordenador.</Text>
 
-      <View style={{ flexDirection: "row", borderRadius: 9, overflow: "hidden", borderWidth: 1, borderColor: D.border, alignSelf: "flex-start", marginBottom: 16 }}>
+      <View style={{ flexDirection: "row", borderRadius: 8, overflow: "hidden", borderWidth: 1, borderColor: D.border, alignSelf: "flex-start", marginBottom: 16 }}>
         {[["signin", "Entrar"], ["signup", "Crear cuenta"]].map(([k, label]) => (
           <TouchableOpacity key={k} onPress={() => { setMode(k); setError(""); setInfo(""); }}
             style={{ paddingVertical: 9, paddingHorizontal: 18, backgroundColor: mode === k ? D.accent : D.card2 }}>
@@ -76,7 +76,7 @@ export default function Auth() {
       {!!info  && <Text style={{ color: D.green, fontSize: 13, marginBottom: 10 }}>{info}</Text>}
 
       <TouchableOpacity onPress={submit} disabled={disabled}
-        style={{ backgroundColor: disabled ? D.card2 : D.accent, paddingVertical: 14, borderRadius: 10, alignItems: "center" }}>
+        style={{ backgroundColor: disabled ? D.card2 : D.accent, paddingVertical: 14, borderRadius: 8, alignItems: "center" }}>
         {busy
           ? <ActivityIndicator color={D.muted} />
           : <Text style={{ color: disabled ? D.muted : "#fff", fontSize: 15, fontWeight: "600" }}>{mode === "signup" ? "Crear cuenta" : "Entrar"}</Text>}
@@ -87,7 +87,7 @@ export default function Auth() {
 
 const inputStyle = () => ({
   backgroundColor: D.card2,
-  borderWidth: 1, borderColor: D.border, borderRadius: 10,
+  borderWidth: 1, borderColor: D.border, borderRadius: 8,
   paddingVertical: 13, paddingHorizontal: 14,
   color: D.text, fontSize: 15, marginBottom: 12,
 });

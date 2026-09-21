@@ -22,7 +22,7 @@ function Row({ s, data, expanded, setExpanded, manualDraft, setManualDraft, appl
     <View style={{ marginBottom: 6 }}>
       <TouchableOpacity onPress={() => setExpanded(isOpen ? null : rowKey)}
         style={{
-          backgroundColor: isOpen ? s.color + "22" : D.card2, borderRadius: 9, borderLeftWidth: 3, borderLeftColor: s.color || D.muted,
+          backgroundColor: isOpen ? s.color + "22" : D.card2, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: s.color || D.muted,
           padding: 12, flexDirection: "row", alignItems: "center", gap: 10,
         }}>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -34,7 +34,7 @@ function Row({ s, data, expanded, setExpanded, manualDraft, setManualDraft, appl
           </Text>
         </View>
         {s.approved && !medal && (
-          <View style={{ backgroundColor: D.green + "22", borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}>
+          <View style={{ backgroundColor: D.green + "22", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
             <Text style={{ color: D.green, fontSize: 10, fontWeight: "600" }}>✓</Text>
           </View>
         )}
@@ -45,7 +45,7 @@ function Row({ s, data, expanded, setExpanded, manualDraft, setManualDraft, appl
       </TouchableOpacity>
 
       {isOpen && (
-        <View style={{ backgroundColor: D.card, borderRadius: 9, borderWidth: 1, borderColor: s.color + "66", padding: 12, marginTop: 4 }}>
+        <View style={{ backgroundColor: D.card, borderRadius: 8, borderWidth: 1, borderColor: s.color + "66", padding: 12, marginTop: 4 }}>
           {gradedTasks.length === 0 && pointsTasks.length === 0 && (
             <Text style={{ color: D.muted, fontSize: 12, marginBottom: 10 }}>Sin actividades calificadas todavía.</Text>
           )}

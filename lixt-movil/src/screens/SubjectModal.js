@@ -50,7 +50,7 @@ export default function SubjectModal({ visible, subject, years, onClose, onSave 
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={{ flex: 1, backgroundColor: VELO, justifyContent: "flex-end" }} onPress={onClose}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "88%" }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "88%" }}>
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 30 }}>
               <Text style={{ color: D.text, fontSize: 17, fontWeight: "700", marginBottom: 16 }}>
                 {subject ? "Editar asignatura" : "Nueva asignatura"}

@@ -144,7 +144,7 @@ export default function CalendarScreen({ data, sync, syncing, mutate }) {
           había que bajar a buscarla después de tocar un día de arriba. */}
       <Modal visible={diaAbierto} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDiaAbierto(false)}>
         <Pressable style={{ flex: 1, backgroundColor: VELO, justifyContent: "center", padding: 22 }} onPress={() => setDiaAbierto(false)}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderRadius: 18, padding: 18, maxHeight: "80%" }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: D.card, borderRadius: 16, padding: 18, maxHeight: "80%" }}>
             <Text style={{ color: D.text, fontSize: 17, fontWeight: "700", textTransform: "capitalize" }}>{fechaLarga(selectedDay)}</Text>
             <Text style={{ color: D.muted, fontSize: 12, marginTop: 2, marginBottom: 14 }}>
               {selectedTasks.length === 0
@@ -167,11 +167,11 @@ export default function CalendarScreen({ data, sync, syncing, mutate }) {
 
             <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
               <TouchableOpacity onPress={newReminderForDay}
-                style={{ flex: 1, backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, paddingVertical: 11, borderRadius: 9, alignItems: "center" }}>
+                style={{ flex: 1, backgroundColor: D.card2, borderWidth: 1, borderColor: D.border, paddingVertical: 11, borderRadius: 8, alignItems: "center" }}>
                 <Text style={{ color: D.text, fontSize: 13, fontWeight: "600" }}>+ Recordatorio</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={newTaskForDay} disabled={!activas.length}
-                style={{ flex: 1, backgroundColor: activas.length ? D.accent : D.card2, paddingVertical: 11, borderRadius: 9, alignItems: "center" }}>
+                style={{ flex: 1, backgroundColor: activas.length ? D.accent : D.card2, paddingVertical: 11, borderRadius: 8, alignItems: "center" }}>
                 <Text style={{ color: activas.length ? "#fff" : D.muted, fontSize: 13, fontWeight: "600" }}>+ Tarea</Text>
               </TouchableOpacity>
             </View>
