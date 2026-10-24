@@ -29,9 +29,15 @@ Lee `hot.md` primero, luego `index.md` si no basta.
   "Sesiones recientes" del PC enseñaban seis sesiones cualesquiera de hace meses.
 - **`COLORS` en `src/constants.js` debe coincidir con la del PC** (`App.jsx`). Un
   color que solo exista en un lado no se puede reelegir desde el otro.
-- **El móvil no edita el modo de calificación** (`gradeMode` / `pts`): al guardar
-  una tarea hay que conservarlos. Si envía `pct`/`null`, gana por `updated_at` y
-  el PC pierde los puntos extra sin avisar.
+- **El móvil no configura los puntos extra** (`gradeMode: "points"` / `pts`): solo
+  cambia entre `"pct"` y `"none"` (sin nota). Una tarea en puntos conserva su modo
+  y sus `pts` al guardar. Si enviara `pct`/`null`, ganaría por `updated_at` y el
+  PC perdería los puntos extra sin avisar.
+- **Tareas: tipos `examen`, `tarea` (Entrega), `practica` y `recordatorio`.**
+  `recordatorio` es la nota rápida del calendario y no sale en el selector de
+  tipos. `trabajo` ya no existe: `migrateTaskType` lo convierte en `tarea`. Los
+  avisos (`reminders`) y el enlace entrega→práctica (`parentId`) se calculan en
+  `logic.js` (`reminderTimes`, `nestChildren`), igual en las dos apps.
 - **`settings` es UN SOLO blob JSON compartido con el PC.** Cada app entiende solo
   una parte, así que hay DOS mezclas y las dos hacen falta:
   1. Al guardar en el móvil, `updateSettings` mezcla sobre lo que ya había. Si

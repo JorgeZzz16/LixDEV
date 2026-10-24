@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Modal, Pressable } from "react-native";
 import { getDaysInMonth, getFirstDay, pad, today, touch, softDelete, newId, bySubjectOrder, shiftMonth, parseDate } from "../logic";
-import { D, VELO } from "../theme";
+import { D, VELO, sc } from "../theme";
 import TaskModal from "./TaskModal";
 
 const MONTHS = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
@@ -155,11 +155,15 @@ export default function CalendarScreen({ data, sync, syncing, mutate }) {
             <ScrollView style={{ flexGrow: 0 }}>
               {selectedTasks.map(t => {
                 const s = data.subjects.find(x => x.id === t.subjectId);
+                const parent = t.parentId ? data.tasks.find(x => x.id === t.parentId) : null;
+                const hijas = data.tasks.filter(x => x.parentId === t.id);
                 return (
                   <TouchableOpacity key={t.id} onPress={() => { setDiaAbierto(false); setEditingTask(t); }}
-                    style={{ backgroundColor: D.card2, borderLeftWidth: 3, borderLeftColor: s?.color || D.muted, borderRadius: 8, padding: 11, marginBottom: 6 }}>
-                    <Text style={{ color: t.status === "completada" ? D.muted : D.text, fontSize: 13, fontWeight: "500", textDecorationLine: t.status === "completada" ? "line-through" : "none" }}>{t.title}</Text>
+                    style={{ backgroundColor: D.card2, borderLeftWidth: 3, borderLeftColor: sc(s?.color || D.muted), borderRadius: 8, padding: 11, marginBottom: 6 }}>
+                    <Text style={{ color: t.status === "completada" ? D.muted : D.text, fontSize: 13, fontWeight: "500", textDecorationLine: t.status === "completada" ? "line-through" : "none" }}>{t.reminders ? "🔔 " : ""}{t.title}</Text>
                     <Text style={{ color: D.muted, fontSize: 11, marginTop: 2 }}>{s?.name || "Sin asignatura"}{t.hour ? " · " + t.hour : ""}</Text>
+                    {parent && <Text style={{ color: D.accent, fontSize: 11, marginTop: 2 }}>🔗 De la práctica: {parent.title} ({parent.dueDate})</Text>}
+                    {hijas.map(h => <Text key={h.id} style={{ color: D.accent, fontSize: 11, marginTop: 2 }}>↳ {h.title} · {h.dueDate}{h.hour ? " " + h.hour : ""}</Text>)}
                   </TouchableOpacity>
                 );
               })}
@@ -182,6 +186,7 @@ export default function CalendarScreen({ data, sync, syncing, mutate }) {
       <TaskModal
         visible={editingTask !== undefined}
         task={editingTask}
+        tasks={data.tasks}
         subjects={editingTask === null ? activas : undefined}
         subjectId={taskSubjId}
         initialDate={selectedDay}

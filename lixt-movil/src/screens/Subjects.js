@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert } from "react-native";
-import { newId, touch, softDelete, daysUntil, calcFinalGrade, gradeColor, subjectMedal, fmtTime, fmtGrade, byDueDate, bySubjectOrder, subjectGroupKey } from "../logic";
+import { newId, touch, softDelete, daysUntil, calcFinalGrade, subjectMedal, fmtTime, fmtGrade, byDueDate, bySubjectOrder, subjectGroupKey } from "../logic";
 import { STATUS_COLOR } from "../constants";
-import { D } from "../theme";
+import { D, sc, gradeColor } from "../theme";
 import SubjectModal from "./SubjectModal";
 import TaskModal from "./TaskModal";
 
@@ -177,6 +177,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
       <TaskModal
         visible={editingTask !== undefined}
         task={editingTask}
+        tasks={data.tasks}
         onClose={() => setEditingTask(undefined)}
         onSave={saveTask}
         onDelete={deleteTask}
@@ -199,7 +200,7 @@ function SubjectCard({ subj, data, expanded, onToggle, onEdit, onApprove, onArch
     <View style={{ backgroundColor: D.card, borderRadius: 12, borderWidth: 1, borderColor: subj.approved ? D.green + "55" : D.border, marginBottom: 10, overflow: "hidden" }}>
       <TouchableOpacity onPress={onToggle} style={{ backgroundColor: subj.approved ? D.green + "18" : D.card2, padding: 12, flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Text style={{ color: D.muted, fontSize: 11 }}>{expanded ? "▼" : "▶"}</Text>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: subj.color }} />
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: sc(subj.color) }} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ color: D.text, fontSize: 14, fontWeight: "600" }} numberOfLines={1}>{subj.name}</Text>
           <Text style={{ color: D.muted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
@@ -240,7 +241,7 @@ function SubjectCard({ subj, data, expanded, onToggle, onEdit, onApprove, onArch
             const d = t.dueDate ? daysUntil(t.dueDate) : null;
             return (
               <TouchableOpacity key={t.id} onPress={() => onEditTask(t)}
-                style={{ backgroundColor: D.card2, borderLeftWidth: 3, borderLeftColor: subj.color, borderRadius: 8, padding: 10, marginBottom: 6, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                style={{ backgroundColor: D.card2, borderLeftWidth: 3, borderLeftColor: sc(subj.color), borderRadius: 8, padding: 10, marginBottom: 6, flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: t.status === "completada" ? D.muted : D.text, fontSize: 12, fontWeight: "500", textDecorationLine: t.status === "completada" ? "line-through" : "none" }} numberOfLines={1}>
                     {t.title}
@@ -270,7 +271,7 @@ function CompactRow({ s, tone, onEdit, onRestore, onDelete }) {
       flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 8, marginBottom: 6,
       backgroundColor: D.card, borderWidth: 1, borderColor: archived ? D.border : D.green + "44", opacity: archived ? 0.65 : 1,
     }}>
-      <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: s.color }} />
+      <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: sc(s.color) }} />
       <Text style={{ flex: 1, color: archived ? D.muted : D.text, fontSize: 12, textDecorationLine: archived ? "line-through" : "none" }} numberOfLines={1}>{s.name}</Text>
       <Text style={{ fontSize: 9, color: archived ? D.muted : D.green, backgroundColor: (archived ? D.card2 : D.green + "22"), paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
         {archived ? "📁" : "✓"}

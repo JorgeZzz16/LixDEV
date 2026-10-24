@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from "react";
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
-import { fmtTime, academicCoursesOf, academicCourseOf, courseRange, weightedAverage, gradeColor, fmtGrade, today, fmtDate } from "../logic";
+import { fmtTime, academicCoursesOf, academicCourseOf, courseRange, weightedAverage, fmtGrade, today, fmtDate } from "../logic";
 
 // Fecha de hace N días, en hora LOCAL. Con `toISOString()` esto daba la fecha UTC,
 // que entre las 00:00 y las 02:00 en España va un día por detrás (mismo motivo por
 // el que `today()` no puede ser toISOString: ver logic.js).
 const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return fmtDate(d); };
-import { D } from "../theme";
+import { D, sc, gradeColor } from "../theme";
 
 const PERIODS = [["global","Global"],["last7","7 días"],["last30","30 días"],["week","Semana"],["month","Mes"]];
 
@@ -97,7 +97,7 @@ export default function Stats({ data, sync, syncing }) {
             <Text style={{ color: D.muted, fontSize: 12 }}>{fmtTime(s.minutes)}</Text>
           </View>
           <View style={{ height: 6, borderRadius: 3, backgroundColor: D.card2, overflow: "hidden" }}>
-            <View style={{ height: "100%", width: `${(s.minutes / maxMin) * 100}%`, backgroundColor: s.color, borderRadius: 4 }} />
+            <View style={{ height: "100%", width: `${(s.minutes / maxMin) * 100}%`, backgroundColor: sc(s.color), borderRadius: 4 }} />
           </View>
         </View>
       ))}

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, TextInput, RefreshControl } from "react-native";
-import { calcFinalGrade, weightedAverage, gradeColor, subjectMedal, touch, softDelete, fmtGrade, soloNumero, parseNum } from "../logic";
-import { D } from "../theme";
+import { calcFinalGrade, weightedAverage, subjectMedal, touch, softDelete, fmtGrade, soloNumero, parseNum } from "../logic";
+import { D, sc, gradeColor } from "../theme";
 import TaskModal from "./TaskModal";
 
 // ─── Fila de asignatura ─────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ function Row({ s, data, expanded, setExpanded, manualDraft, setManualDraft, appl
     <View style={{ marginBottom: 6 }}>
       <TouchableOpacity onPress={() => setExpanded(isOpen ? null : rowKey)}
         style={{
-          backgroundColor: isOpen ? s.color + "22" : D.card2, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: s.color || D.muted,
+          backgroundColor: isOpen ? s.color + "22" : D.card2, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: sc(s.color || D.muted),
           padding: 12, flexDirection: "row", alignItems: "center", gap: 10,
         }}>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -45,7 +45,7 @@ function Row({ s, data, expanded, setExpanded, manualDraft, setManualDraft, appl
       </TouchableOpacity>
 
       {isOpen && (
-        <View style={{ backgroundColor: D.card, borderRadius: 8, borderWidth: 1, borderColor: s.color + "66", padding: 12, marginTop: 4 }}>
+        <View style={{ backgroundColor: D.card, borderRadius: 8, borderWidth: 1, borderColor: sc(s.color) + "66", padding: 12, marginTop: 4 }}>
           {gradedTasks.length === 0 && pointsTasks.length === 0 && (
             <Text style={{ color: D.muted, fontSize: 12, marginBottom: 10 }}>Sin actividades calificadas todavía.</Text>
           )}
@@ -191,6 +191,7 @@ export default function Grades({ data, sync, syncing, mutate, program }) {
       <TaskModal
         visible={editingTask !== undefined}
         task={editingTask}
+        tasks={data.tasks}
         onClose={() => setEditingTask(undefined)}
         onSave={saveTask}
         onDelete={id => { mutate("tasks", prev => prev.map(t => t.id === id ? softDelete(t) : t)); setEditingTask(undefined); }}

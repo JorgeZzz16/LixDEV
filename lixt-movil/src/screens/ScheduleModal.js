@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Modal, View, Text, TouchableOpacity, Pressable, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
-import { D, botonPrimario, botonSecundario, botonPeligro, VELO } from "../theme";
+import { D, botonPrimario, botonSecundario, botonPeligro, VELO, sc } from "../theme";
 import { TimeField } from "./DateTimeField";
 
 const DAYS = ["Lu","Ma","Mi","Ju","Vi","Sá","Do"];
@@ -40,7 +40,7 @@ export default function ScheduleModal({ visible, slot, subjects, day, onClose, o
               <Text style={{ color: D.text, fontSize: 17, fontWeight: "700", flex: 1 }}>
                 {slot ? "Editar clase" : "Nueva clase"}
               </Text>
-              {!!elegida && <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: elegida.color }} />}
+              {!!elegida && <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: sc(elegida.color) }} />}
             </View>
 
             <Text style={{ color: D.muted, fontSize: 12, marginBottom: 7 }}>Asignatura</Text>
@@ -48,7 +48,7 @@ export default function ScheduleModal({ visible, slot, subjects, day, onClose, o
               <View style={{ flexDirection: "row", gap: 7 }}>
                 {subjects.map(s => (
                   <TouchableOpacity key={s.id} onPress={() => setSubjectId(s.id)}
-                    style={{ paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8, backgroundColor: subjectId === s.id ? s.color + "33" : D.card2, borderWidth: 1, borderColor: subjectId === s.id ? s.color : D.border }}>
+                    style={{ paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8, backgroundColor: subjectId === s.id ? s.color + "33" : D.card2, borderWidth: 1, borderColor: subjectId === s.id ? sc(s.color) : D.border }}>
                     <Text style={{ color: subjectId === s.id ? D.text : D.muted, fontSize: 13, fontWeight: subjectId === s.id ? "600" : "400" }}>
                       {s.acronym || s.name}
                     </Text>

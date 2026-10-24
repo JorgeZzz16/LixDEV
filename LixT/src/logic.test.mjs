@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import {
   calcFinalGrade, touch, GRADE_SCALES, fmtGrade, fmtGradeFull, setGradeConfig, weightedAverage,
   soloNumero, parseNum, byDueDate, pendingTasks, today, pad, parseDate, fmtDate,
-  academicCourseOf, startOfWeek, endOfWeek, studyStreak,
+  academicCourseOf, startOfWeek, endOfWeek, studyStreak, paraFondo, contraste, tasksOnDate,
+  reminderTimes, dueReminders, nestChildren, migrateTaskType,
 } from "./logic.js";
 
 const subj = { id: "s1", name: "Cálculo", manualGrade: null };
@@ -211,5 +212,79 @@ assert.deepEqual(studyStreak([{ date: "2026-09-16", minutes: 0 }], "2026-09-16")
 // Sin sesiones no revienta
 assert.deepEqual(studyStreak([], "2026-09-16"), { dias: 0, hoy: false });
 assert.deepEqual(studyStreak(null, "2026-09-16"), { dias: 0, hoy: false });
+
+// ─── Colores sobre fondo claro ────────────────────────────────────────────────
+
+// Un amarillo de la paleta es ilegible sobre papel y hay que oscurecerlo.
+assert.ok(contraste("#FBE870", "#ffffff") < 1.5);
+const amarilloPapel = paraFondo("#FBE870", true);
+assert.ok(contraste(amarilloPapel, "#ffffff") >= 4, "el amarillo sigue sin contrastar");
+assert.notEqual(amarilloPapel, "#FBE870");
+
+// En tema oscuro no se toca NADA: la paleta está pensada para fondo negro.
+assert.equal(paraFondo("#FBE870", false), "#FBE870");
+
+// Un color que ya contrasta se deja tal cual, no se oscurece "por si acaso".
+assert.equal(paraFondo("#533AB7", true), "#533AB7");
+
+// Basura: devuelve lo que le des en vez de reventar al pintar.
+assert.equal(paraFondo(null, true), null);
+assert.equal(paraFondo("rojo", true), "rojo");
+assert.equal(paraFondo("#fff", true), "#fff");
+
+// Contra un fondo que no es blanco puro también funciona.
+assert.ok(contraste(paraFondo("#AFE313", true, "#f6f7fa"), "#f6f7fa") >= 4);
+
+// tasksOnDate: lo que seguía abierto ese día, completado o no, por fecha de entrega
+{
+  const tks = [
+    { id: "a", subjectId: "1", dueDate: "2026-12-16", status: "pendiente" },
+    { id: "b", subjectId: "1", dueDate: "2026-10-22", status: "completada" },
+    { id: "c", subjectId: "1", dueDate: "2026-09-01", status: "pendiente" },
+    { id: "d", subjectId: "2", dueDate: "2026-10-30", status: "pendiente" },
+    { id: "e", subjectId: null, dueDate: "2026-10-25", status: "pendiente" },
+  ];
+  assert.deepEqual(tasksOnDate(tks, "1", "2026-10-01").map(t => t.id), ["b", "a"]);
+  assert.deepEqual(tasksOnDate(tks, "1", "2026-10-22").map(t => t.id), ["b", "a"]);
+  assert.deepEqual(tasksOnDate(tks, "1", "2026-10-23").map(t => t.id), ["a"]);
+  assert.deepEqual(tasksOnDate(tks, null, "2026-10-01").map(t => t.id), ["e"]);
+}
+
+// Recordatorios
+{
+  const hm = d => `${d.getDate()}/${d.getMonth() + 1} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // Entrega con hora límite: 1 día y 2 h antes
+  const ent = { type: "tarea", dueDate: "2026-10-22", hour: "23:59", status: "pendiente",
+    reminders: { list: [{ before: 1440 }, { before: 120 }] } };
+  assert.deepEqual(reminderTimes(ent).map(hm), ["21/10 23:59", "22/10 21:59"]);
+  // Examen con rango: cuenta desde el inicio
+  const ex = { type: "examen", dueDate: "2026-10-22", hour: "10:00-12:00", status: "pendiente",
+    reminders: { list: [{ before: 60 }] } };
+  assert.deepEqual(reminderTimes(ex).map(hm), ["22/10 09:00"]);
+  // Sin hora: la hora por defecto
+  assert.deepEqual(reminderTimes({ ...ex, hour: "" }, [8, 30]).map(hm), ["22/10 07:30"]);
+  // Personalizado
+  assert.deepEqual(reminderTimes({ ...ex, reminders: { list: [{ at: "2026-10-20T18:15" }] } }).map(hm), ["20/10 18:15"]);
+  // Completada o sin avisos: nada
+  assert.deepEqual(reminderTimes({ ...ex, status: "completada" }), []);
+  assert.deepEqual(reminderTimes({ ...ex, reminders: null }), []);
+  // Recordatorio del calendario sin configurar: avisa a su hora
+  assert.deepEqual(reminderTimes({ type: "recordatorio", dueDate: "2026-10-22", hour: "17:00" }).map(hm), ["22/10 17:00"]);
+  // Insistir: uno al día desde el primero
+  const ins = reminderTimes({ ...ent, reminders: { list: [{ before: 1440 }], insist: true } });
+  assert.equal(ins.length, 61);
+  assert.deepEqual(ins.slice(0, 3).map(hm), ["21/10 23:59", "22/10 23:59", "23/10 23:59"]);
+  // Ventana de avisos pendientes
+  const from = new Date(2026, 9, 21, 0, 0).getTime(), to = new Date(2026, 9, 22, 0, 0).getTime();
+  assert.deepEqual(dueReminders([ent, ex], from, to).map(r => hm(r.at)), ["21/10 23:59"]);
+}
+
+// Entregas debajo de su práctica
+{
+  const l = [{ id: "e1", parentId: "p1" }, { id: "x" }, { id: "p1" }, { id: "e2", parentId: "fuera" }];
+  assert.deepEqual(nestChildren(l).map(t => t.id), ["x", "p1", "e1", "e2"]);
+  assert.equal(migrateTaskType({ type: "trabajo" }).type, "tarea");
+  assert.equal(migrateTaskType({ type: "examen" }).type, "examen");
+}
 
 console.log("logic.js OK");

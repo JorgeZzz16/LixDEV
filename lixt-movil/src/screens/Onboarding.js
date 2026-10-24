@@ -53,7 +53,7 @@ export default function Onboarding({ onCreate }) {
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 28 }}>
           {COLORS.filter((_, i) => i % 3 === 0).map(c => (
             <TouchableOpacity key={c} onPress={() => setColor(c)}
-              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c, borderWidth: color === c ? 3 : 0, borderColor: "#fff" }} />
+              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c, borderWidth: color === c ? 3 : 0, borderColor: D.text }} />
           ))}
         </View>
 

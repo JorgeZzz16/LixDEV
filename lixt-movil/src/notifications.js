@@ -1,9 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // Avisos locales de los recordatorios.
 //
-// Solo los recordatorios (`type === "recordatorio"`): son lo único que se apunta
-// para que el teléfono te lo recuerde; las entregas y exámenes ya se ven en el
-// calendario y en la lista.
+// Avisan las tareas con recordatorios configurados (`task.reminders`) y las
+// notas rápidas del calendario (`type === "recordatorio"`), que avisan a su hora.
+// Cuándo salta cada aviso lo calcula `reminderTimes` (logic.js), el mismo que
+// usa el PC.
 //
 // La estrategia es "cancelar todo y reprogramar". Es idempotente y no hay que
 // llevar la cuenta de qué aviso corresponde a qué tarea ni limpiar los de las
@@ -15,7 +16,8 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { Platform } from "react-native";
-import { parseDate } from "./logic";
+import { reminderTimes } from "./logic";
+import { TASK_TYPES } from "./constants";
 
 // El módulo se carga a demanda, no al arrancar. Expo Go ya no trae el módulo
 // nativo de notificaciones en Android, y un `import` arriba del todo revienta la
@@ -28,8 +30,8 @@ async function cargarModulo() {
   return Notifications;
 }
 
-// Hora por defecto cuando el recordatorio no la lleva (el móvil no pide hora al
-// crearlo; el PC sí, y puede ser un rango "18:00-20:30", del que vale el inicio).
+// Hora por defecto de los avisos de tareas sin hora (ninguna app obliga a ponerla;
+// si es un rango "18:00-20:30", vale el inicio).
 // Se puede cambiar en Ajustes; si el ajuste viene roto se usa esta.
 const HORA_POR_DEFECTO = [9, 0];
 
@@ -40,13 +42,14 @@ function horaPorDefecto(ajustes) {
   return h <= 23 && min <= 59 ? [h, min] : HORA_POR_DEFECTO;
 }
 
-function cuando(task, ajustes) {
-  const d = parseDate(task.dueDate);
-  if (isNaN(d)) return null;
-  const [hd, md] = horaPorDefecto(ajustes);
-  const m = /^(\d{1,2}):(\d{2})/.exec(task.hour || "");
-  d.setHours(m ? Number(m[1]) : hd, m ? Number(m[2]) : md, 0, 0);
-  return d;
+// Android aguanta ~500 avisos programados e iOS 64: se programan los más próximos
+// y el resto entra en las siguientes pasadas (cada vez que cambian las tareas).
+const MAX_AVISOS = 60;
+
+function cuerpo(t) {
+  const label = TASK_TYPES.find(x => x.key === t.type)?.label || "Tarea";
+  const [, m, d] = String(t.dueDate || "").split("-");
+  return `${label}${d ? ` · ${Number(d)}/${Number(m)}` : ""}${t.hour ? " · " + t.hour : ""}`;
 }
 
 let permiso = null; // null = sin preguntar todavía
@@ -74,10 +77,11 @@ export async function syncReminders(tasks, ajustes) {
     await cargarModulo();
     // Los avisos vienen activados salvo que los apagues a propósito.
     const activos = ajustes?.notifyReminders !== false;
+    const ahora = new Date(), hora = horaPorDefecto(ajustes);
     const pendientes = !activos ? [] : (tasks || [])
-      .filter(t => t.type === "recordatorio" && t.status !== "completada" && !t.deleted_at && t.dueDate)
-      .map(t => ({ t, fecha: cuando(t, ajustes) }))
-      .filter(({ fecha }) => fecha && fecha > new Date());
+      .flatMap(t => reminderTimes(t, hora).filter(fecha => fecha > ahora).map(fecha => ({ t, fecha })))
+      .sort((a, b) => a.fecha - b.fecha)
+      .slice(0, MAX_AVISOS);
 
     // Se cancela SIEMPRE antes de nada: así, al apagar los avisos en Ajustes, los
     // que ya estaban programados se van en la misma pasada en vez de seguir
@@ -91,7 +95,7 @@ export async function syncReminders(tasks, ajustes) {
 
     for (const { t, fecha } of pendientes) {
       await Notifications.scheduleNotificationAsync({
-        content: { title: t.title || "Recordatorio", body: "Hoy", channelId: "recordatorios" },
+        content: { title: "🔔 " + (t.title || "Recordatorio"), body: cuerpo(t), channelId: "recordatorios" },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fecha },
       });
     }

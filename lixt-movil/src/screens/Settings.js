@@ -30,7 +30,7 @@ import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { signOut } from "../supabase";
 import { GRADE_SCALES, today, tasksToIcs, parseIcs, icsToTasks } from "../logic";
-import { D, BG_LABELS, VELO } from "../theme";
+import { D, BG_LABELS, VELO, sc } from "../theme";
 import { TimeField } from "./DateTimeField";
 
 const PASSING = [4, 4.5, 5, 5.5, 6];
@@ -242,9 +242,9 @@ export default function Settings({
                   titulo={p.name}
                   resumen={`${p.type === "career" ? "Grado" : "Máster"} · ${p.years} año${p.years !== 1 ? "s" : ""}`}
                   onPress={() => onSelectProgram(p.id)}
-                  left={<View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: p.color }} />}
+                  left={<View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: sc(p.color) }} />}
                   right={p.id === activeProgram
-                    ? <Text style={{ fontSize: 12, color: p.color, backgroundColor: p.color + "22", paddingHorizontal: 9, paddingVertical: 3, borderRadius: 6 }}>Activo</Text>
+                    ? <Text style={{ fontSize: 12, color: sc(p.color), backgroundColor: p.color + "22", paddingHorizontal: 9, paddingVertical: 3, borderRadius: 6 }}>Activo</Text>
                     : null}
                 />
               ))}

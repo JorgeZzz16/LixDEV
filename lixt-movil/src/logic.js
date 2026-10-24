@@ -274,6 +274,36 @@ export function lerpColor(hexA, hexB, t) {
   return "#" + c.map(v => v.toString(16).padStart(2, "0")).join("");
 }
 
+// Luminancia relativa (WCAG): 0 el negro, 1 el blanco.
+function luminancia(hex) {
+  const c = [1, 3, 5]
+    .map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map(v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+
+// Razón de contraste entre dos colores, de 1 (iguales) a 21 (negro sobre blanco).
+export function contraste(hexA, hexB) {
+  const [alta, baja] = [luminancia(hexA), luminancia(hexB)].sort((a, b) => b - a);
+  return (alta + 0.05) / (baja + 0.05);
+}
+
+// Ajusta un color para que se vea sobre un fondo CLARO.
+//
+// La paleta de asignaturas se eligió sobre fondo oscuro: los amarillos y los
+// verdes claros son perfectos sobre negro y desaparecen sobre papel. Esto los
+// oscurece mezclando hacia el negro, pero solo en tema claro y solo hasta que
+// llegan al contraste pedido — un azul oscuro ya contrasta y se queda igual.
+//
+// ponytail: se busca el contraste a pasos de 0.12 en vez de resolverlo. Son como
+// mucho doce vueltas de aritmética sobre tres enteros, al pintar cada elemento.
+export function paraFondo(hex, claro, fondo = "#ffffff", minRatio = 4) {
+  if (!claro || typeof hex !== "string" || !/^#[0-9a-fA-F]{6}$/.test(hex)) return hex;
+  let c = hex;
+  for (let i = 0; i < 12 && contraste(c, fondo) < minRatio; i++) c = lerpColor(c, "#000000", 0.12);
+  return c;
+}
+
 // Degradado continuo: rojo(0) → naranja(5) → verde claro(5) → verde oscuro(9) → dorado(9-10)
 export function gradeColor(g) {
   const P = GRADE_PALETTE;
@@ -374,6 +404,15 @@ export function linearRegression(points) {
 export const pendingTasks = (tasks, subjId) =>
   (tasks || [])
     .filter(t => t.subjectId === subjId && t.status !== "completada")
+    .sort(byDueDate);
+
+// Tareas que seguían abiertas en `date`: las que se entregaban ese día o después
+// (o no tienen fecha), estén ya completadas o no. No se guarda cuándo se
+// completó cada tarea, así que la fecha de entrega es la mejor aproximación.
+// `subjId` vacío = tareas sin asignatura.
+export const tasksOnDate = (tasks, subjId, date) =>
+  (tasks || [])
+    .filter(t => (subjId ? t.subjectId === String(subjId) : !t.subjectId) && (!t.dueDate || t.dueDate >= date))
     .sort(byDueDate);
 
 // Id de la tarea pendiente más próxima de una asignatura ("" si no hay).
@@ -617,4 +656,102 @@ export function icsToTasks(eventos, { programId = null, tasks = [] } = {}) {
       deleted_at: null,
     });
   });
+}
+
+// ─── Tipos de tarea ────────────────────────────────────────────────────────────
+
+// "Trabajo" dejó de existir como tipo: pasa a ser una entrega. Con `touch` para
+// que el cambio se suba y el otro dispositivo deje de verlo como trabajo.
+export const migrateTaskType = t => t?.type === "trabajo" ? touch({ ...t, type: "tarea" }) : t;
+
+// Entregas justo debajo de su práctica. Solo se mueven las que tienen a la
+// práctica en la misma lista: si un filtro la ha dejado fuera, la entrega se
+// queda en su sitio (y la interfaz enseña el enlace de otra forma).
+export function nestChildren(list) {
+  const ids = new Set((list || []).map(t => t.id));
+  const kids = {};
+  for (const t of list || []) if (t.parentId && ids.has(t.parentId)) (kids[t.parentId] ||= []).push(t);
+  const out = [];
+  for (const t of list || []) {
+    if (t.parentId && ids.has(t.parentId)) continue;
+    out.push(t);
+    for (const k of kids[t.id] || []) out.push(k);
+  }
+  return out;
+}
+
+// ─── Recordatorios ─────────────────────────────────────────────────────────────
+//
+// `task.reminders` es null o { list, insist }:
+//   list    → avisos: { before: minutos antes } o { at: "AAAA-MM-DDTHH:MM" }
+//   insist  → además, un aviso cada día a la hora del primero hasta completarla
+// La referencia de "antes" es el inicio del rango (examen, práctica) o la hora
+// límite (entrega). Sin hora, se toma la hora por defecto de los avisos.
+// Los recordatorios del calendario sin avisos configurados avisan a su hora,
+// como hacían siempre.
+
+export const REMINDER_PRESETS = [
+  { before: 0,     label: "A la hora" },
+  { before: 60,    label: "1 h antes" },
+  { before: 120,   label: "2 h antes" },
+  { before: 1440,  label: "1 día antes" },
+  { before: 4320,  label: "3 días antes" },
+  { before: 10080, label: "1 semana antes" },
+];
+
+// Lo que se marca al activar los avisos de una tarea nueva
+export const DEFAULT_REMINDERS = { examen: [10080, 1440], tarea: [1440, 120], practica: [60] };
+
+const MAX_INSIST = 60; // días de insistencia como mucho
+
+// Momento de la tarea: su fecha a la hora de inicio (o límite), o a `defaultHour`
+export function taskMoment(task, defaultHour = [9, 0]) {
+  const d = parseDate(task?.dueDate);
+  if (isNaN(d)) return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(task?.hour || "");
+  d.setHours(m ? Number(m[1]) : defaultHour[0], m ? Number(m[2]) : defaultHour[1], 0, 0);
+  return d;
+}
+
+// Todos los avisos de una tarea, ordenados. Las completadas no avisan.
+export function reminderTimes(task, defaultHour = [9, 0]) {
+  if (!task || task.status === "completada" || task.deleted_at) return [];
+  const base = taskMoment(task, defaultHour);
+  let list = task.reminders?.list || [];
+  if (!list.length && task.type === "recordatorio") list = [{ before: 0 }];
+  const out = [];
+  for (const r of list) {
+    if (r?.at) {
+      const [ds, hm] = String(r.at).split("T");
+      const d = parseDate(ds);
+      const m = /^(\d{1,2}):(\d{2})/.exec(hm || "");
+      if (isNaN(d)) continue;
+      d.setHours(m ? Number(m[1]) : defaultHour[0], m ? Number(m[2]) : defaultHour[1], 0, 0);
+      out.push(d);
+    } else if (base && Number.isFinite(r?.before)) {
+      out.push(new Date(base.getTime() - r.before * 60000));
+    }
+  }
+  out.sort((a, b) => a - b);
+  if (task.reminders?.insist && out.length) {
+    for (let i = 1; i <= MAX_INSIST; i++) {
+      const d = new Date(out[0]);
+      d.setDate(d.getDate() + i);
+      out.push(d);
+    }
+    out.sort((a, b) => a - b);
+  }
+  // Sin duplicados (p. ej. "a la hora" y uno personalizado a la misma hora)
+  return out.filter((d, i) => i === 0 || d.getTime() !== out[i - 1].getTime());
+}
+
+// Avisos que caen en (from, to]: [{ task, at }] ordenados por hora
+export function dueReminders(tasks, from, to, defaultHour = [9, 0]) {
+  const out = [];
+  for (const t of tasks || []) {
+    for (const at of reminderTimes(t, defaultHour)) {
+      if (at.getTime() > from && at.getTime() <= to) out.push({ task: t, at });
+    }
+  }
+  return out.sort((a, b) => a.at - b.at);
 }

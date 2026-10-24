@@ -66,7 +66,7 @@ export default function SubjectModal({ visible, subject, years, onClose, onSave 
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
                 {COLORS.map(c => (
                   <TouchableOpacity key={c} onPress={() => setF(p => ({ ...p, color: c }))}
-                    style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: c, borderWidth: f.color === c ? 3 : 0, borderColor: "#fff" }} />
+                    style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: c, borderWidth: f.color === c ? 3 : 0, borderColor: D.text }} />
                 ))}
               </View>
 

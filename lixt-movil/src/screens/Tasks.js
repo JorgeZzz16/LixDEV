@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { newId, touch, softDelete, daysUntil, gradeColor, fmtGradeFull, academicCourseOf, academicCourseLabel, byDueDate, bySubjectOrder, subjectGroupKey } from "../logic";
+import { newId, touch, softDelete, daysUntil, fmtGradeFull, academicCourseOf, academicCourseLabel, byDueDate, bySubjectOrder, subjectGroupKey, nestChildren } from "../logic";
 import { TASK_TYPES, PRIORITY_COLOR } from "../constants";
-import { D } from "../theme";
+import { D, sc, gradeColor } from "../theme";
 import TaskModal from "./TaskModal";
 
 export default function Tasks({ data, sync, syncing, mutate }) {
@@ -101,17 +101,20 @@ export default function Tasks({ data, sync, syncing, mutate }) {
 
         {filtered.length === 0 && <Text style={{ color: D.muted, fontSize: 13, textAlign: "center", marginTop: 30 }}>Sin actividades.</Text>}
 
-        {filtered.map(t => {
+        {nestChildren(filtered).map(t => {
           const subj = data.subjects.find(s => s.id === t.subjectId);
+          const parent = t.parentId ? data.tasks.find(x => x.id === t.parentId) : null;
+          const nested = !!parent && filtered.some(x => x.id === parent.id);
           const d = t.dueDate ? daysUntil(t.dueDate) : null;
           const done = t.status === "completada";
           const tt = TASK_TYPES.find(x => x.key === t.type);
           return (
             <View key={t.id} style={{
               flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: D.card,
-              borderRadius: 8, borderWidth: 1, borderColor: D.border, borderLeftWidth: 4, borderLeftColor: subj?.color || D.muted,
-              padding: 12, marginBottom: 7, opacity: done ? 0.55 : 1,
+              borderRadius: 8, borderWidth: 1, borderColor: D.border, borderLeftWidth: 4, borderLeftColor: sc(subj?.color || D.muted),
+              padding: 12, marginBottom: 7, marginLeft: nested ? 22 : 0, opacity: done ? 0.55 : 1,
             }}>
+              {nested && <Text style={{ color: D.muted, fontSize: 13, marginRight: -4 }}>↳</Text>}
               <TouchableOpacity onPress={() => toggleStatus(t)} style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 2, borderColor: done ? D.accent : D.border, backgroundColor: done ? D.accent : "transparent", alignItems: "center", justifyContent: "center" }}>
                 {done && <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>✓</Text>}
               </TouchableOpacity>
@@ -121,10 +124,13 @@ export default function Tasks({ data, sync, syncing, mutate }) {
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                   <Badge label={tt?.label || t.type} color={D.muted} />
                   <Badge label={t.priority} color={PRIORITY_COLOR[t.priority] || D.muted} />
+                  {t.gradeMode === "none" && <Badge label="sin nota" color={D.muted} />}
+                  {(t.reminders || t.type === "recordatorio") && <Text style={{ fontSize: 11 }}>🔔</Text>}
+                  {parent && !nested && <Badge label={"🔗 " + parent.title} color={D.accent} />}
                   {t.grade !== null && t.grade !== undefined && <Badge label={fmtGradeFull(t.grade)} color={gradeColor(t.grade)} />}
                 </View>
                 <Text style={{ color: D.muted, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
-                  {subj?.name || "Sin asignatura"}{t.dueDate ? " · " + t.dueDate : ""}
+                  {subj?.name || "Sin asignatura"}{t.dueDate ? " · " + t.dueDate : ""}{t.hour ? " · " + t.hour : ""}
                   {d !== null ? "  ·  " + (d < 0 ? "Vencida" : d === 0 ? "Hoy" : d + "d") : ""}
                 </Text>
               </TouchableOpacity>
@@ -136,6 +142,7 @@ export default function Tasks({ data, sync, syncing, mutate }) {
       <TaskModal
         visible={editingTask !== undefined}
         task={editingTask}
+        tasks={data.tasks}
         subjects={activas}
         subjectId={taskSubjId}
         onSubjectChange={setTaskSubjId}

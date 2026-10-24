@@ -11,19 +11,29 @@
 //      quedaría con los colores del arranque. Por eso los estilos compartidos de
 //      las pantallas son funciones (`input()`, `campo()`), no constantes.
 
+import { paraFondo, gradeColor as gradeColorBase } from "./logic";
+
 export const BG_THEMES = {
   dark:   { bg: "#0a0c12", card: "#13161f", card2: "#1c2030", border: "#252a3a", sidebar: "#0f1219" },
   darker: { bg: "#050709", card: "#0d1018", card2: "#141924", border: "#1e2333", sidebar: "#080a10" },
   navy:   { bg: "#060d1a", card: "#0d1528", card2: "#152038", border: "#1e2e4a", sidebar: "#07101f" },
   gray:   { bg: "#111318", card: "#1a1d24", card2: "#22262f", border: "#2d323e", sidebar: "#0e1015" },
+  // El único claro. Trae además `text` y `muted`: el texto casi blanco de los
+  // oscuros no se lee sobre papel. Por eso en `applyTheme` el fondo se mezcla
+  // DESPUÉS de los fijos, para poder pisarlos.
+  light:  { bg: "#e8eaf0", card: "#f6f7fa", card2: "#e2e6ee", border: "#c3cad9", sidebar: "#dfe3ec",
+            text: "#1a1d26", muted: "#575e76", claro: true },
 };
 
 export const BG_LABELS = [
-  ["dark", "Oscuro"], ["darker", "Más oscuro"], ["navy", "Azul noche"], ["gray", "Gris"],
+  ["dark", "Oscuro"], ["darker", "Más oscuro"], ["navy", "Azul noche"], ["gray", "Gris"], ["light", "Claro"],
 ];
 
-// Los que no dependen del fondo. `accent` sí cambia: sigue al color del programa
-// activo, igual que en el PC.
+// Si el fondo es claro, los iconos de la barra de estado tienen que ir en negro.
+export const esClaro = bgTheme => bgTheme === "light";
+
+// Los que no dependen del fondo — salvo `text` y `muted`, que el tema claro pisa.
+// `accent` sí cambia siempre: sigue al color del programa activo, igual que en el PC.
 const FIJOS = {
   text:   "#e8eaf0",
   muted:  "#6b7194",
@@ -31,14 +41,36 @@ const FIJOS = {
   green:  "#1D9E75",
   red:    "#E24B4A",
   amber:  "#BA7517",
+  // `claro` tiene que estar aquí en false, no solo en el tema claro: `applyTheme`
+  // hace Object.assign, que añade claves pero no borra las que sobran. Sin esto,
+  // al volver de claro a oscuro `D.claro` se quedaría en true para siempre.
+  claro:  false,
 };
 
 export const D = { ...BG_THEMES.dark, ...FIJOS };
 
 export function applyTheme({ bgTheme, accent } = {}) {
-  Object.assign(D, BG_THEMES[bgTheme] || BG_THEMES.dark, FIJOS);
-  if (accent) D.accent = accent;
+  Object.assign(D, FIJOS, BG_THEMES[bgTheme] || BG_THEMES.dark);
+  // Sobre papel se oscurecen los colores elegidos para fondo negro, y solo esos:
+  // `paraFondo` deja intacto lo que ya contrasta. La referencia es la superficie
+  // más oscura (card2), así el color vale también sobre las tarjetas claras.
+  if (D.claro) {
+    D.green = paraFondo(FIJOS.green, true, D.card2, 4.5);
+    D.red   = paraFondo(FIJOS.red,   true, D.card2, 4.5);
+    D.amber = paraFondo(FIJOS.amber, true, D.card2, 4.5);
+  }
+  // El acento es el color del programa: se le pide menos porque va en grande y
+  // como fondo de botones con texto blanco encima.
+  if (accent) D.accent = paraFondo(accent, D.claro, D.card2, 3.2);
 }
+
+// ─── Color sobre el fondo actual ──────────────────────────────────────────────
+//
+// La paleta de asignaturas se eligió sobre fondo oscuro: sus amarillos y verdes
+// claros desaparecen sobre papel. En oscuro devuelven el color tal cual.
+
+export const sc = c => paraFondo(c, D.claro, D.card2);
+export const gradeColor = g => sc(gradeColorBase(g));
 
 // ─── Estilos compartidos ──────────────────────────────────────────────────────
 //

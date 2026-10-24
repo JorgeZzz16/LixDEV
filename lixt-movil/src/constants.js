@@ -32,12 +32,12 @@ export const COLORS = [
 ];
 
 export const TASK_TYPES = [
-  { key: "tarea",    label: "Entrega",  hasGrade: true },
   { key: "examen",   label: "Examen",   hasGrade: true },
-  { key: "trabajo",  label: "Trabajo",  hasGrade: true },
+  { key: "tarea",    label: "Entrega",  hasGrade: true },
   { key: "practica", label: "Práctica", hasGrade: true },
-  // Sin nota y sin asignatura: para apuntar cosas sueltas en el calendario
-  { key: "recordatorio", label: "Recordatorio", hasGrade: false },
+  // Nota suelta del calendario: sin nota y sin asignatura. Solo se crea desde el
+  // calendario, por eso no sale entre los tipos del formulario (`quick`).
+  { key: "recordatorio", label: "Recordatorio", hasGrade: false, quick: true },
 ];
 
 // Salen del tema, no copiados a mano: "en progreso" usa el acento, que cambia con

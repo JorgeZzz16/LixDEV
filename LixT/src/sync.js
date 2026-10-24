@@ -25,7 +25,7 @@ import { supabase } from "./supabase.js";
 const FIELD_MAP = {
   programs: { semestersPerYear: "semesters_per_year" },
   subjects: { programId: "program_id", manualGrade: "manual_grade" },
-  tasks:    { programId: "program_id", subjectId: "subject_id", dueDate: "due_date", gradeMode: "grade_mode" },
+  tasks:    { programId: "program_id", subjectId: "subject_id", dueDate: "due_date", gradeMode: "grade_mode", parentId: "parent_id" },
   sessions: { programId: "program_id", subjectId: "subject_id", subjectName: "subject_name", subjectColor: "subject_color", taskTitle: "task_title" },
   schedule: { programId: "program_id", subjectId: "subject_id", start: "start_time", end: "end_time" },
 };
@@ -35,7 +35,7 @@ const FIELD_MAP = {
 const COLUMNS = {
   programs: ["id", "name", "type", "years", "semesters_per_year", "color", "updated_at", "deleted_at"],
   subjects: ["id", "program_id", "name", "acronym", "color", "course", "year", "semester", "credits", "approved", "archived", "annual", "manual_grade", "updated_at", "deleted_at"],
-  tasks:    ["id", "program_id", "subject_id", "title", "due_date", "hour", "type", "status", "priority", "grade", "grade_mode", "pct", "pts", "updated_at", "deleted_at"],
+  tasks:    ["id", "program_id", "subject_id", "title", "due_date", "hour", "type", "status", "priority", "grade", "grade_mode", "pct", "pts", "np", "reminders", "parent_id", "updated_at", "deleted_at"],
   sessions: ["id", "program_id", "subject_id", "subject_name", "subject_color", "task_title", "date", "minutes", "manual", "updated_at", "deleted_at"],
   schedule: ["id", "program_id", "subject_id", "day", "start_time", "end_time", "course", "updated_at", "deleted_at"],
 };

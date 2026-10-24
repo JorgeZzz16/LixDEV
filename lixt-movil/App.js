@@ -9,9 +9,9 @@ import React, { useState, useEffect, useMemo } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator, SafeAreaView, StatusBar, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useStore } from "./src/store";
-import { studyStreak } from "./src/logic";
+import { studyStreak, migrateTaskType } from "./src/logic";
 import { syncReminders } from "./src/notifications";
-import { D } from "./src/theme";
+import { D, esClaro } from "./src/theme";
 import Splash from "./src/screens/Splash";
 import Onboarding from "./src/screens/Onboarding";
 
@@ -51,6 +51,8 @@ const TABS = [
 
 export default function App() {
   const store = useStore();
+  // Sobre fondo claro los iconos de la barra de estado tienen que ir en negro.
+  const barra = esClaro(store.settings?.bgTheme) ? "dark-content" : "light-content";
   const [tab, setTab] = useState("tasks");
   const [showSettings, setShowSettings] = useState(false);
 
@@ -83,6 +85,12 @@ export default function App() {
   // verdad los que ya estaban puestos, no solo dejar de crear nuevos.
   useEffect(() => { syncReminders(store.data?.tasks, store.settings); }, [store.data?.tasks, store.settings]);
 
+  // "Trabajo" ya no es un tipo: lo que llegue así (datos viejos, el PC sin
+  // actualizar) pasa a entrega.
+  useEffect(() => {
+    if (store.data?.tasks?.some(t => t.type === "trabajo")) store.mutate("tasks", prev => prev.map(migrateTaskType));
+  }, [store.data?.tasks]);
+
   // La pantalla de carga se mantiene hasta que: los datos locales estén, haya
   // pasado el tiempo mínimo, y la primera sincronización haya terminado. Ese
   // último punto evita mostrar el onboarding a alguien que sí tiene datos en la
@@ -91,17 +99,17 @@ export default function App() {
     // Tras iniciar sesión el arranque ya pasó, así que se indica qué se está
     // haciendo en vez de dejar la pantalla muda.
     const label = splashDone && store.session ? "Cargando tus datos…" : null;
-    return <><StatusBar barStyle="light-content" backgroundColor={D.bg} /><Splash label={label} /></>;
+    return <><StatusBar barStyle={barra} backgroundColor={D.bg} /><Splash label={label} /></>;
   }
 
-  if (!store.session) return <><StatusBar barStyle="light-content" /><Auth /></>;
+  if (!store.session) return <><StatusBar barStyle={barra} /><Auth /></>;
 
   // Con sesión pero sin ningún programa de estudio: usuario nuevo que empieza por
   // el móvil. Sin esto no habría dónde guardar las asignaturas.
   if (!store.state?.programs?.length) {
     return (
       <>
-        <StatusBar barStyle="light-content" backgroundColor={D.bg} />
+        <StatusBar barStyle={barra} backgroundColor={D.bg} />
         <Onboarding onCreate={st => store.setState(st)} />
       </>
     );
@@ -111,12 +119,12 @@ export default function App() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: D.bg, paddingTop: Platform.OS === "android" ? 28 : 0 }}>
-      <StatusBar barStyle="light-content" backgroundColor={D.bg} />
+      <StatusBar barStyle={barra} backgroundColor={D.bg} />
 
       {/* Cabecera */}
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: D.border }}>
         <Text style={{ color: D.text, fontSize: 17, fontWeight: "700", flex: 1 }}>
-          LixT <Text style={{ color: D.muted, fontSize: 11, fontWeight: "400" }}>v1.4.0</Text>
+          LixT <Text style={{ color: D.muted, fontSize: 11, fontWeight: "400" }}>v1.4.5</Text>
         </Text>
         {store.syncing && <ActivityIndicator color={D.muted} size="small" style={{ marginRight: 14 }} />}
         <Racha sessions={store.data.sessions} />

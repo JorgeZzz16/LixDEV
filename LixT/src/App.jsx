@@ -16,10 +16,11 @@ import {
   shiftMonth, academicCourseOf, courseRange, academicCoursesOf, academicCourseLabel, weekdayIndex, timeToMinutes,
   bySubjectOrder, subjectGroupKey,
   fmtTime, setGradeConfig, parseDate, fmtDate, GRADE_SCALES,
-  gradeColor, gradeLabel, subjectMedal,
+  gradeColor as gradeColorBase, gradeLabel, subjectMedal, paraFondo,
   calcFinalGrade as calcGradeOf, stdDev, linearRegression,
-  pendingTasks, defaultTaskId, mostStudied, fmtGrade, fmtGradeFull,
+  pendingTasks, tasksOnDate, defaultTaskId, mostStudied, fmtGrade, fmtGradeFull,
   byDueDate, parseNum, studyStreak,
+  migrateTaskType, nestChildren, REMINDER_PRESETS, DEFAULT_REMINDERS, reminderTimes, dueReminders,
   tasksToIcs, parseIcs, icsToTasks,
 } from "./logic.js";
 
@@ -63,31 +64,123 @@ const BG_THEMES = {
   darker:  { bg: "#050709", card: "#0d1018", card2: "#141924", border: "#1e2333", sidebar: "#080a10" },
   navy:    { bg: "#060d1a", card: "#0d1528", card2: "#152038", border: "#1e2e4a", sidebar: "#07101f" },
   gray:    { bg: "#111318", card: "#1a1d24", card2: "#22262f", border: "#2d323e", sidebar: "#0e1015" },
+  // El único claro. Trae además `text` y `muted` porque el texto casi blanco de
+  // los oscuros es ilegible sobre papel; por eso el fondo se mezcla DESPUÉS de
+  // los colores fijos en `makeTheme`, para poder pisarlos.
+  light:   { bg: "#e8eaf0", card: "#f6f7fa", card2: "#e2e6ee", border: "#c3cad9", sidebar: "#dfe3ec",
+             text: "#1a1d26", muted: "#575e76" },
 };
 
 function makeTheme(accentColor, bgTheme) {
   const bg = BG_THEMES[bgTheme] || BG_THEMES.dark;
+  const claro = bgTheme === "light";
+  // Sobre papel hay que oscurecer los colores que se eligieron para fondo negro,
+  // y solo esos: `ajustar` deja intacto lo que ya contrasta. La referencia es la
+  // superficie MÁS oscura de las dos (card2), así el color vale en las dos.
+  const ajustar = (c, min) => (claro ? paraFondo(c, true, bg.card2, min) : c);
   return {
-    ...bg,
     text:    "#e8eaf0",
     muted:   "#6b7194",
-    accent:  accentColor || "#378ADD",
-    green:   "#1D9E75",
-    red:     "#E24B4A",
-    amber:   "#BA7517",
+    // Texto pequeño (los "3d" de la barra lateral, las notas): 4.5.
+    green:   ajustar("#1D9E75", 4.5),
+    red:     ajustar("#E24B4A", 4.5),
+    amber:   ajustar("#BA7517", 4.5),
+    ...bg,
+    // El acento es el color del programa y sale de la misma paleta. Se pide algo
+    // menos porque se usa en grande y como fondo de botones con texto blanco; si
+    // no se ajustara, un programa amarillo dejaba botones ilegibles.
+    accent:  ajustar(accentColor || "#378ADD", 3.2),
+    // Lo consultan los ayudantes de color de abajo.
+    claro,
   };
 }
-// D por defecto (para componentes fuera del contexto de App)
+
+// Tema vivo. Es un objeto mutable a propósito: los componentes de fuera de App
+// (Card, StatCard, CustomSelect…) lo leen al pintar, y App reasigna su contenido
+// en cada render. Arranca en oscuro para lo que se dibuje antes de montar App.
 const D = makeTheme("#378ADD", "dark");
 
+// Color de asignatura listo para pintarse sobre el fondo actual. En tema oscuro
+// devuelve el mismo color; en claro lo oscurece lo justo para que se vea.
+const sc = c => paraFondo(c, D.claro, D.card2);
+
+// Lo mismo para la escala de notas: el verde claro y el dorado no se leían.
+const gradeColor = g => sc(gradeColorBase(g));
+
+// ── Selector de color con todo el espectro, con el estilo de la app ──────────
+function hexToHsv(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return [210, 0.75, 0.87];
+  const n = parseInt(m[1], 16), r = (n >> 16) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+  let h = d === 0 ? 0 : max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h *= 60; if (h < 0) h += 360;
+  return [h, max ? d / max : 0, max];
+}
+function hsvToHex([h, s, v]) {
+  const f = k => { const x = (k + h / 60) % 6; return Math.round(255 * (v - v * s * Math.max(0, Math.min(x, 4 - x, 1)))); };
+  return "#" + [f(5), f(3), f(1)].map(c => c.toString(16).padStart(2, "0")).join("");
+}
+// Arrastre dentro de una caja: llama fn(x, y) con valores 0–1
+function dragBox(fn) {
+  const at = e => { const r = e.currentTarget.getBoundingClientRect(); fn(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))); };
+  return {
+    onPointerDown: e => { e.currentTarget.setPointerCapture(e.pointerId); at(e); },
+    onPointerMove: e => { if (e.buttons) at(e); },
+  };
+}
+function ColorPick({ value, onChange }) {
+  const [hsv, setHsv]   = useState(() => hexToHsv(value));
+  const [hex, setHex]   = useState(value || "");
+  // Guardamos el HSV propio para no perder el tono al pasar por grises/negro
+  useEffect(() => { if (hsvToHex(hsv) !== (value || "").toLowerCase()) setHsv(hexToHsv(value)); setHex(value || ""); }, [value]);
+  const set = next => { setHsv(next); onChange(hsvToHex(next)); };
+  const [h, s, v] = hsv;
+  const knob = { position: "absolute", width: 14, height: 14, borderRadius: "50%", border: "2px solid #fff", boxShadow: "0 0 0 1px rgba(0,0,0,.4)", transform: "translate(-50%,-50%)", pointerEvents: "none" };
+  return (
+        <div style={{ flex: 1, width: "100%", padding: 12, borderRadius: 10, border: "1px solid " + D.border, background: D.card2, display: "grid", gap: 10 }}>
+          <div {...dragBox((x, y) => set([h, x, 1 - y]))} style={{ position: "relative", height: 140, borderRadius: 8, cursor: "crosshair", touchAction: "none", background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${h} 100% 50%))` }}>
+            <div style={{ ...knob, left: s * 100 + "%", top: (1 - v) * 100 + "%", background: hsvToHex(hsv) }} />
+          </div>
+          <div {...dragBox(x => set([x * 359.9, s, v]))} style={{ position: "relative", height: 12, borderRadius: 6, cursor: "pointer", touchAction: "none", background: "linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)" }}>
+            <div style={{ ...knob, left: h / 360 * 100 + "%", top: "50%", background: `hsl(${h} 100% 50%)` }} />
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ width: 28, height: 28, borderRadius: 6, background: value, flexShrink: 0 }} />
+            <input value={hex} onChange={e => { const t = e.target.value.trim(); setHex(t); const x = t.startsWith("#") ? t : "#" + t; if (/^#[0-9a-f]{6}$/i.test(x)) onChange(x.toLowerCase()); }}
+              style={{ flex: 1, minWidth: 0, padding: "6px 8px", borderRadius: 8, border: "1px solid " + D.border, background: D.card, color: D.text, fontSize: 12, fontFamily: "monospace" }} />
+          </div>
+        </div>
+  );
+}
+
+// Valor del selector del Focus para las tareas activas sin asignatura
+const NO_SUBJ = "__none__";
+
 const TASK_TYPES = [
-  { key: "tarea",    label: "Entrega",  hasGrade: true  },
   { key: "examen",   label: "Examen",   hasGrade: true  },
-  { key: "trabajo",  label: "Trabajo",  hasGrade: true  },
+  { key: "tarea",    label: "Entrega",  hasGrade: true  },
   { key: "practica", label: "Práctica", hasGrade: true  },
-  // Sin nota y sin asignatura: sirve para apuntar cosas sueltas en el calendario
-  { key: "recordatorio", label: "Recordatorio", hasGrade: false },
+  // Nota suelta del calendario: sin nota y sin asignatura. Solo se crea desde el
+  // "＋" de un día, por eso no sale entre los tipos del formulario (`quick`).
+  { key: "recordatorio", label: "Recordatorio", hasGrade: false, quick: true },
 ];
+
+// Hora por defecto de los avisos de tareas sin hora (en el móvil es un ajuste)
+const HORA_AVISO = [9, 0];
+
+// La entrega lleva una hora límite ("23:59") y el resto un rango ("10:00-12:00").
+// Al cambiar de tipo se adapta la que hubiera en vez de perderla.
+function adaptHour(hour, type) {
+  const [a, b] = String(hour || "").split("-");
+  if (!/^\d{1,2}:\d{2}$/.test(a || "")) return hour || "";
+  if (type === "tarea") return b || a;
+  if (b) return hour;
+  const [h, m] = a.split(":").map(Number);
+  return `${a}-${pad(Math.min(23, h + 1))}:${pad(m)}`;
+}
+
+const fmtWhen = d => d.toLocaleString("es-ES", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 const DEFAULT_SUBJECTS = [
   { id: "1", name: "Matemáticas", color: "#378ADD", archived: false, approved: false, course: "", year: null, semester: null, credits: null, programMode: "career" },
@@ -174,8 +267,8 @@ async function sendNotif(title, body) {
 
 
 
-const PRIORITY_COLOR = { alta: D.red, media: D.amber, baja: D.green };
-const STATUS_COLOR   = { pendiente: D.muted, "en progreso": D.accent, completada: D.green };
+const PRIORITY_COLOR = () => ({ alta: D.red, media: D.amber, baja: D.green });
+const STATUS_COLOR   = () => ({ pendiente: D.muted, "en progreso": D.accent, completada: D.green });
 const MODE_LABELS    = { work: "Trabajo", short: "Descanso corto", long: "Descanso largo" };
 
 
@@ -209,11 +302,14 @@ const LOADING_CSS = `
   }
 `;
 
-const inp = {
+// FUNCIÓN, no constante: `D` se muta al cambiar de tema, así que un objeto
+// calculado al importar se queda con los colores del arranque para siempre.
+// Misma regla que en el móvil (theme.js).
+const inp = () => ({
   padding: "8px 12px", borderRadius: 8,
   border: "1px solid " + D.border, background: D.card2,
   color: D.text, fontSize: 13, width: "100%", boxSizing: "border-box",
-};
+});
 
 const btnBase = { padding: "9px 0", borderRadius: 8, fontSize: 14, cursor: "pointer", flex: 1 };
 
@@ -231,7 +327,7 @@ function CustomSelect({ value, onChange, options, disabled, disabledLabel, dotCo
 
   if (disabled || options.length === 0) {
     return (
-      <div style={{ ...inp, color: D.muted, opacity: 0.6, cursor: "default", display: "flex", justifyContent: "space-between" }}>
+      <div style={{ ...inp(), color: D.muted, opacity: 0.6, cursor: "default", display: "flex", justifyContent: "space-between" }}>
         <span>{disabledLabel ?? "Sin opciones"}</span>
       </div>
     );
@@ -243,7 +339,7 @@ function CustomSelect({ value, onChange, options, disabled, disabledLabel, dotCo
     <div ref={ref} style={{ position: "relative" }}>
       <div
         onClick={() => setOpen(o => !o)}
-        style={{ ...inp, display: "flex", alignItems: "center", cursor: "pointer", userSelect: "none", gap: 8 }}
+        style={{ ...inp(), display: "flex", alignItems: "center", cursor: "pointer", userSelect: "none", gap: 8 }}
       >
         {dotColor && <div style={{ width: 9, height: 9, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />}
         <span style={{ flex: 1 }}>{selected?.label}</span>
@@ -387,7 +483,7 @@ function Popover({ anclaRef, abierto, onClose, ancho, alto, children }) {
 function CampoDesplegable({ texto, icono, vacio, abierto, onToggle, campoRef }) {
   return (
     <div ref={campoRef} onClick={onToggle}
-      style={{ ...inp, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", userSelect: "none",
+      style={{ ...inp(), display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", userSelect: "none",
                borderColor: abierto ? D.accent : D.border }}>
       <span style={{ color: vacio ? D.muted : D.text }}>{texto}</span>
       <span style={{ fontSize: 12, color: D.muted }}>{icono}</span>
@@ -523,7 +619,7 @@ function RangoHoras({ value, onChange }) {
     const suelto = String(value || "").trim();
     return (
       <button onClick={() => onChange("09:00-10:00")} title={suelto ? "Se sustituirá por un rango de horas" : undefined}
-        style={{ ...inp, textAlign: "left", cursor: "pointer", color: suelto ? D.amber : D.muted }}>
+        style={{ ...inp(), textAlign: "left", cursor: "pointer", color: suelto ? D.amber : D.muted }}>
         {suelto ? `${suelto}  →  usar rango` : "+ Añadir hora"}
       </button>
     );
@@ -557,17 +653,22 @@ function Modal({ onClose, children }) {
   );
 }
 
-function Card({ children, style }) {
+function Card({ children, style, ...rest }) {
   return (
-    <div style={{ background: D.card, border: "1px solid " + D.border, borderRadius: 12, padding: "16px 18px", ...(style || {}) }}>
+    <div {...rest} style={{ background: D.card, border: "1px solid " + D.border, borderRadius: 12, padding: "16px 18px", ...(style || {}) }}>
       {children}
     </div>
   );
 }
 
+// Alto de las tarjetas de resumen del Focus: la racha a la izquierda y los dos
+// contadores a la derecha. Es el mismo número a propósito — así las dos columnas
+// acaban a la misma altura y el cronómetro se puede estirar con lo que sobra.
+const ALTO_RESUMEN = 92;
+
 function StatCard({ label, value, color }) {
   return (
-    <div style={{ background: D.card2, borderRadius: 8, padding: "14px 16px", textAlign: "center", border: "1px solid " + D.border }}>
+    <div style={{ background: D.card2, borderRadius: 8, padding: "14px 16px", textAlign: "center", border: "1px solid " + D.border, display: "flex", flexDirection: "column", justifyContent: "center" }}>
       <div style={{ fontSize: 28, fontWeight: 600, color: color || D.text }}>{value}</div>
       <div style={{ fontSize: 12, color: D.muted, marginTop: 3 }}>{label}</div>
     </div>
@@ -597,11 +698,90 @@ function NumInput({ value, onChange, min = 1, max = 180, label }) {
   );
 }
 
+// ─── HoraLimite ────────────────────────────────────────────────────────────────
+// Hora única de las entregas. Igual que RangoHoras, pero con un solo extremo.
+function HoraLimite({ value, onChange }) {
+  const h = /^(\d{1,2}:\d{2})/.exec(String(value || ""))?.[1];
+  if (!h) return (
+    <button onClick={() => onChange("23:59")} style={{ ...inp(), textAlign: "left", cursor: "pointer", color: D.muted }}>+ Añadir hora límite</button>
+  );
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ flex: 1 }}><TimeWheel value={h} onChange={onChange} /></div>
+      <button onClick={() => onChange("")} title="Quitar la hora"
+        style={{ background: "none", border: "none", color: D.muted, cursor: "pointer", fontSize: 14, padding: "0 2px" }}>✕</button>
+    </div>
+  );
+}
+
+// ─── ReminderEditor ────────────────────────────────────────────────────────────
+// Avisos de una tarea: presets relativos a su hora, fechas a mano e "insistir".
+// El formato está explicado en logic.js (reminderTimes).
+function ReminderEditor({ taskForm, setTaskForm }) {
+  const r = taskForm.reminders;
+  const list = r?.list || [];
+  const set = next => setTaskForm(f => ({ ...f, reminders: next }));
+  const toggle = () => set(r ? null : { list: (DEFAULT_REMINDERS[taskForm.type] || [1440]).map(before => ({ before })), insist: false });
+  const has = b => list.some(x => x.before === b);
+  const flip = b => set({ ...r, list: has(b) ? list.filter(x => x.before !== b) : [...list, { before: b }] });
+  const setAt = (i, at) => set({ ...r, list: list.map((x, j) => j === i ? { at } : x) });
+  const next = r ? reminderTimes({ ...taskForm, status: "pendiente" }, HORA_AVISO).find(d => d > new Date()) : null;
+  const chip = on => ({ padding: "5px 10px", borderRadius: 7, border: "1px solid " + (on ? D.accent : D.border), background: on ? D.accent + "22" : D.card, color: on ? D.accent : D.muted, fontSize: 11, cursor: "pointer" });
+  return (
+    <div style={{ borderRadius: 10, border: "1px solid " + D.border, background: D.card2, padding: "10px 12px" }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: D.text }}>
+        <input type="checkbox" checked={!!r} onChange={toggle} style={{ accentColor: D.accent, width: 15, height: 15 }} />
+        🔔 Añadir recordatorio
+      </label>
+      {r && (
+        <>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+            {REMINDER_PRESETS.map(p => <button key={p.before} onClick={() => flip(p.before)} style={chip(has(p.before))}>{p.label}</button>)}
+            <button onClick={() => set({ ...r, list: [...list, { at: (taskForm.dueDate || today()) + "T09:00" }] })} style={chip(false)}>+ Personalizado</button>
+          </div>
+          {list.map((x, i) => {
+            if (!x.at) return null;
+            const [ds, hm] = x.at.split("T");
+            return (
+              <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
+                <div style={{ flex: 1 }}><DatePicker value={ds} onChange={v => setAt(i, v + "T" + hm)} /></div>
+                <div style={{ flex: 1 }}><TimeWheel value={hm} onChange={v => setAt(i, ds + "T" + v)} /></div>
+                <button onClick={() => set({ ...r, list: list.filter((_, j) => j !== i) })} title="Quitar"
+                  style={{ background: "none", border: "none", color: D.muted, cursor: "pointer", fontSize: 14 }}>✕</button>
+              </div>
+            );
+          })}
+          {taskForm.type === "tarea" && (
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: D.text, marginTop: 10 }}>
+              <input type="checkbox" checked={!!r.insist} onChange={() => set({ ...r, insist: !r.insist })} style={{ accentColor: D.accent }} />
+              Insistir: avisar cada día hasta que la marques como hecha
+            </label>
+          )}
+          <div style={{ fontSize: 11, color: D.muted, marginTop: 8 }}>
+            {next ? "Próximo aviso: " + fmtWhen(next) : list.length ? "Todos los avisos ya han pasado" : "Elige cuándo avisar"}
+            {!taskForm.hour && list.some(x => !x.at) && " · sin hora, se cuenta desde las 9:00"}
+          </div>
+          <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>En el ordenador avisa con la app abierta; en el móvil, siempre.</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── TaskModal ─────────────────────────────────────────────────────────────────
 
-function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, onSave, onClose }) {
+function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, tasks, onSave, onClose, onAddChild, onOpenTask }) {
   const tt = TASK_TYPES.find(t => t.key === taskForm.type) || TASK_TYPES[0];
   const gradeMode = taskForm.gradeMode || "pct";
+  // El examen siempre lleva nota; entregas y prácticas pueden ir sin ella
+  const modes = taskForm.type === "examen"
+    ? [["pct", "Porcentaje"], ["points", "Puntos extra"]]
+    : [["pct", "Porcentaje"], ["points", "Puntos extra"], ["none", "Sin nota"]];
+  const conNota = tt.hasGrade && gradeMode !== "none";
+  // Prácticas a las que se puede enlazar una entrega: las de su asignatura (y la
+  // actual, aunque se haya cambiado de asignatura, para no perderla de vista)
+  const practicas = tasks.filter(t => t.type === "practica" && t.id !== editTaskId && (t.subjectId === (taskForm.subjectId || null) || t.id === taskForm.parentId));
+  const hijas = editTaskId ? nestChildren(tasks.filter(t => t.parentId === editTaskId).sort(byDueDate)) : [];
   const subjOptions = [{ value: "", label: "Sin asignatura" }, ...activeSubjects.map(s => ({ value: s.id, label: s.name + (s.course ? " (" + s.course + ")" : "") }))];
   return (
     <Modal onClose={onClose}>
@@ -610,10 +790,14 @@ function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, onSave, 
         <div>
           <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Tipo</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {TASK_TYPES.map(t => (
+            {(taskForm.type === "recordatorio" ? TASK_TYPES.filter(t => t.quick) : TASK_TYPES.filter(t => !t.quick)).map(t => (
               <button key={t.key} onClick={() => {
                 const subj = activeSubjects.find(s => s.id === taskForm.subjectId);
-                setTaskForm(f => ({ ...f, type: t.key, title: autoTitle(t.key, subj?.name) }));
+                setTaskForm(f => ({
+                  ...f, type: t.key, title: autoTitle(t.key, subj?.name), hour: adaptHour(f.hour, t.key),
+                  gradeMode: t.key === "examen" && f.gradeMode === "none" ? "pct" : f.gradeMode,
+                  parentId: t.key === "tarea" ? f.parentId : null,
+                }));
               }} style={{ flex: "1 1 30%", padding: "7px 0", borderRadius: 8, border: "1px solid " + D.border, background: taskForm.type === t.key ? D.accent : D.card2, color: taskForm.type === t.key ? "#fff" : D.muted, fontSize: 12, cursor: "pointer", fontWeight: taskForm.type === t.key ? 500 : 400 }}>{t.label}</button>
             ))}
           </div>
@@ -631,7 +815,7 @@ function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, onSave, 
         </div>
         <div>
           <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Título</div>
-          <input value={taskForm.title} onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))} style={inp} />
+          <input value={taskForm.title} onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))} style={inp()} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <div>
@@ -657,37 +841,67 @@ function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, onSave, 
             <DatePicker value={taskForm.dueDate} onChange={v => setTaskForm(f => ({ ...f, dueDate: v }))} />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Hora</div>
-            <RangoHoras value={taskForm.hour} onChange={v => setTaskForm(f => ({ ...f, hour: v }))} />
+            <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>{taskForm.type === "tarea" ? "Hora límite" : "Hora"}</div>
+            {taskForm.type === "tarea"
+              ? <HoraLimite value={taskForm.hour} onChange={v => setTaskForm(f => ({ ...f, hour: v }))} />
+              : <RangoHoras value={taskForm.hour} onChange={v => setTaskForm(f => ({ ...f, hour: v }))} />}
           </div>
         </div>
+        {taskForm.type === "tarea" && (practicas.length > 0 || taskForm.parentId) && (
+          <div>
+            <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>🔗 Pertenece a la práctica</div>
+            <CustomSelect
+              value={taskForm.parentId ?? ""}
+              onChange={v => setTaskForm(f => ({ ...f, parentId: v || null }))}
+              options={[{ value: "", label: "— Ninguna —" }, ...practicas.sort(byDueDate).map(t => ({ value: t.id, label: t.title + (t.dueDate ? " · " + t.dueDate : "") }))]}
+            />
+          </div>
+        )}
+        {taskForm.type === "practica" && (
+          <div style={{ borderRadius: 10, border: "1px solid " + D.border, background: D.card2, padding: "10px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: D.muted }}>🔗 Entregas de esta práctica</span>
+              <button onClick={onAddChild} style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 7, border: "1px solid " + D.border, background: D.card, color: D.accent, fontSize: 12, cursor: "pointer" }}>＋ Entrega asociada</button>
+            </div>
+            {hijas.length === 0 && <div style={{ fontSize: 11, color: D.muted, marginTop: 6 }}>Ninguna todavía. Se guardará la práctica y se abrirá la entrega con la fecha una semana después.</div>}
+            {hijas.map(h => (
+              <div key={h.id} onClick={() => onOpenTask(h)} style={{ fontSize: 12, marginTop: 6, cursor: "pointer", color: h.status === "completada" ? D.muted : D.text }}>
+                ↳ {h.title} <span style={{ color: D.muted }}>· {h.dueDate}{h.hour ? " " + h.hour : ""} · {h.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
         {tt.hasGrade && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div>
               <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Modo de calificación</div>
               <div style={{ display: "flex", gap: 6 }}>
-                {[["pct", "Porcentaje"], ["points", "Puntos extra"]].map(([m, label]) => (
+                {modes.map(([m, label]) => (
                   <button key={m} onClick={() => setTaskForm(f => ({ ...f, gradeMode: m }))} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "1px solid " + D.border, background: gradeMode === m ? D.accent : D.card2, color: gradeMode === m ? "#fff" : D.muted, fontSize: 12, cursor: "pointer", fontWeight: gradeMode === m ? 500 : 400 }}>{label}</button>
                 ))}
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {conNota && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <div>
-                <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Nota (0–10)</div>
-                <input type="number" min="0" max="10" step="0.1" placeholder="—" value={taskForm.grade ?? ""} onChange={e => setTaskForm(f => ({ ...f, grade: e.target.value }))} style={inp} />
+                <div style={{ display: "flex", alignItems: "center", marginBottom: 5 }}>
+                  <span style={{ fontSize: 12, color: D.muted }}>Nota (0–10)</span>
+                  {/* NP: no presentado. Cuenta como "nota puesta" pero no hace media */}
+                  <button onClick={() => setTaskForm(f => ({ ...f, np: !f.np }))} title="No presentado: no hace media" style={{ marginLeft: "auto", padding: "1px 7px", borderRadius: 6, border: "1px solid " + D.border, background: taskForm.np ? D.red : D.card2, color: taskForm.np ? "#fff" : D.muted, fontSize: 11, cursor: "pointer" }}>NP</button>
+                </div>
+                <input type="number" min="0" max="10" step="0.1" placeholder={taskForm.np ? "NP" : "—"} disabled={!!taskForm.np} value={taskForm.np ? "" : taskForm.grade ?? ""} onChange={e => setTaskForm(f => ({ ...f, grade: e.target.value }))} style={inp()} />
               </div>
               {gradeMode === "points" ? (
                 <div>
                   <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Puntos máx.</div>
-                  <input type="number" min="0" max="10" step="0.1" placeholder="—" value={taskForm.pts ?? ""} onChange={e => setTaskForm(f => ({ ...f, pts: e.target.value }))} style={inp} />
+                  <input type="number" min="0" max="10" step="0.1" placeholder="—" value={taskForm.pts ?? ""} onChange={e => setTaskForm(f => ({ ...f, pts: e.target.value }))} style={inp()} />
                 </div>
               ) : (
                 <div>
                   <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Peso (%)</div>
-                  <input type="number" min="0" max="100" placeholder="—" value={taskForm.pct ?? ""} onChange={e => setTaskForm(f => ({ ...f, pct: e.target.value }))} style={inp} />
+                  <input type="number" min="0" max="100" placeholder="—" value={taskForm.pct ?? ""} onChange={e => setTaskForm(f => ({ ...f, pct: e.target.value }))} style={inp()} />
                 </div>
               )}
-            </div>
+            </div>}
             {gradeMode === "points" && (
               <div style={{ fontSize: 11, color: D.muted, padding: "6px 10px", borderRadius: 6, background: D.card2 }}>
                 {taskForm.grade !== "" && taskForm.grade != null && taskForm.pts !== "" && taskForm.pts != null && !isNaN(Number(taskForm.grade)) && !isNaN(Number(taskForm.pts))
@@ -697,11 +911,14 @@ function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, onSave, 
             )}
           </div>
         )}
-        {tt.hasGrade && taskForm.grade !== "" && taskForm.grade !== null && (
+        {conNota && !taskForm.np && taskForm.grade !== "" && taskForm.grade !== null && (
           <div style={{ fontSize: 13, padding: "8px 12px", borderRadius: 8, background: D.card2, color: gradeColor(Number(taskForm.grade)), textAlign: "center", fontWeight: 500 }}>
             {gradeLabel(Number(taskForm.grade))}
           </div>
         )}
+        {taskForm.type === "recordatorio"
+          ? <div style={{ fontSize: 12, color: D.muted }}>🔔 Avisa ese día a su hora (a las 9:00 si no tiene).</div>
+          : <ReminderEditor taskForm={taskForm} setTaskForm={setTaskForm} />}
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
         <button onClick={onClose} style={{ ...btnBase, border: "1px solid " + D.border, background: D.card2, color: D.text }}>Cancelar</button>
@@ -802,7 +1019,7 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
         <button onClick={onToggleCollapse} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 12, padding: "2px 4px", flexShrink: 0, lineHeight: 1 }} title={collapsed ? "Expandir" : "Minimizar"}>
           {collapsed ? "▶" : "▼"}
         </button>
-        <div style={{ width: 12, height: 12, borderRadius: "50%", background: subj.color, flexShrink: 0 }} />
+        <div style={{ width: 12, height: 12, borderRadius: "50%", background: sc(subj.color), flexShrink: 0 }} />
         <span style={{ fontSize: 15, fontWeight: 600, flex: 1, cursor: "pointer" }} onClick={onToggleCollapse}>
           {subj.name}
           {subj.year    ? <span style={{ fontSize: 11, fontWeight: 400, color: D.muted, marginLeft: 7 }}>{subj.year}º</span> : null}
@@ -848,21 +1065,22 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
               const tt   = TASK_TYPES.find(x => x.key === t.type);
               const taskMins = sessions.filter(s => s.subjectId === subj.id && s.taskTitle === t.title).reduce((a, s) => a + s.minutes, 0);
               return (
-                <div key={t.id} onClick={() => onEditTask(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: D.card2, marginBottom: 5, cursor: "pointer", borderLeft: "3px solid " + subj.color }}>
+                <div key={t.id} onClick={() => onEditTask(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: D.card2, marginBottom: 5, cursor: "pointer", borderLeft: "3px solid " + sc(subj.color) }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: t.status === "completada" ? "line-through" : "none", color: t.status === "completada" ? D.muted : D.text }}>{t.title}</div>
                     <div style={{ fontSize: 11, color: D.muted, display: "flex", gap: 8, marginTop: 2 }}>
-                      <span style={{ color: STATUS_COLOR[t.status] }}>{t.status}</span>
+                      <span style={{ color: STATUS_COLOR()[t.status] }}>{t.status}</span>
                       <span>{days < 0 ? "Vencida" : days === 0 ? "Hoy" : days + "d"}</span>
                       {t.hour && <span>{t.hour}</span>}
                     </div>
                   </div>
                   <div style={{ flexShrink: 0, textAlign: "right" }}>
                     <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", alignItems: "center" }}>
-                      <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: D.card, color: PRIORITY_COLOR[t.priority] || D.muted }}>{t.priority}</span>
+                      <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: D.card, color: PRIORITY_COLOR()[t.priority] || D.muted }}>{t.priority}</span>
                       <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: D.card, color: D.muted }}>{tt?.label}</span>
                       {taskMins > 0 && <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: D.card, color: D.accent }}>⏱ {fmtTime(taskMins)}</span>}
                     </div>
+                    {t.np && <div style={{ fontSize: 12, fontWeight: 600, color: D.red, marginTop: 2 }}>NP</div>}
                     {t.grade !== null && <div style={{ fontSize: 12, fontWeight: 600, color: gradeColor(t.grade), marginTop: 2 }}>{fmtGradeFull(t.grade)}{t.gradeMode === "points" ? (t.pts ? " (+" + t.pts + " pts)" : "") : (t.pct ? " (" + t.pct + "%)" : "")}</div>}
                   </div>
                 </div>
@@ -879,7 +1097,7 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
                       <div style={{ height: 5, borderRadius: 3, background: D.border, overflow: "hidden", marginTop: 3 }}>
-                        <div style={{ height: "100%", borderRadius: 4, background: subj.color, width: t.pct + "%" }} />
+                        <div style={{ height: "100%", borderRadius: 4, background: sc(subj.color), width: t.pct + "%" }} />
                       </div>
                     </div>
                     <div style={{ flexShrink: 0, textAlign: "right", fontSize: 12 }}>
@@ -946,7 +1164,7 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
             )}
             <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid " + D.border }}>
               <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Tiempo de estudio</div>
-              <div style={{ fontSize: 20, fontWeight: 600, color: subj.color }}>{fmtTime(totalMins)}</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: sc(subj.color) }}>{fmtTime(totalMins)}</div>
             </div>
           </div>
         </div>
@@ -958,8 +1176,11 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
 
 // ─── MonthGrid (rejilla de un mes para el calendario) ───────────────────────────
 
-function MonthGrid({ year, month, tasks, subjects, todayStr, onEditTask, onAddReminder }) {
+function MonthGrid({ year, month, tasks, subjects, todayStr, onEditTask, onAddReminder, linkHover, setLinkHover }) {
   const firstOffset = (getFirstDay(year, month) + 6) % 7;
+  // Grupo de enlace: la práctica y sus entregas comparten raíz (el id de la práctica)
+  const conHijas = new Set(tasks.filter(t => t.parentId).map(t => t.parentId));
+  const raiz = t => t.parentId || (conHijas.has(t.id) ? t.id : null);
   const daysIn = getDaysInMonth(year, month);
   return (
     <div style={{ flex: 1, minWidth: 280 }}>
@@ -983,7 +1204,14 @@ function MonthGrid({ year, month, tasks, subjects, todayStr, onEditTask, onAddRe
               </div>
               {dayTasks.map(t => {
                 const subj = subjects.find(s => s.id === t.subjectId);
-                return <div key={t.id} onClick={() => onEditTask(t)} title={t.hour || ""} style={{ fontSize: 9, padding: "2px 4px", borderRadius: 4, background: subj?.color || "#888", color: "#fff", marginBottom: 2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", cursor: "pointer", opacity: t.status === "completada" ? 0.5 : 1 }}>{t.title}</div>;
+                const rz = raiz(t);
+                // Al pasar por encima de algo enlazado, su pareja se resalta y el resto se atenúa
+                const dim = linkHover && rz !== linkHover;
+                return <div key={t.id} onClick={() => onEditTask(t)} title={t.hour || ""}
+                  onMouseEnter={() => rz && setLinkHover(rz)} onMouseLeave={() => rz && setLinkHover(null)}
+                  style={{ fontSize: 9, padding: "2px 4px", borderRadius: 4, background: sc(subj?.color || "#888"), color: "#fff", marginBottom: 2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", cursor: "pointer",
+                    opacity: dim ? 0.25 : t.status === "completada" ? 0.5 : 1, outline: linkHover && rz === linkHover ? "2px solid " + D.text : "none", transition: "opacity .15s" }}>
+                  {rz ? "🔗 " : ""}{t.reminders ? "🔔 " : ""}{t.title}</div>;
               })}
             </div>
           );
@@ -1081,7 +1309,7 @@ function SessionTimeline({ sessions, subjects, fmtTime, showEmptyDays, onEditSes
           </div>
           {tooltip.list.map((s, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: i < tooltip.list.length - 1 ? 4 : 0 }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: liveColor(s.subjectId, s.color), flexShrink: 0 }} />
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: sc(liveColor(s.subjectId, s.color)), flexShrink: 0 }} />
               <span style={{ fontSize: 11, color: D.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
               <span style={{ fontSize: 11, color: D.muted, flexShrink: 0 }}>{fmtTime(s.minutes)}</span>
             </div>
@@ -1118,7 +1346,7 @@ function SessionTimeline({ sessions, subjects, fmtTime, showEmptyDays, onEditSes
 
             const bySubj = {};
             daySessions.forEach(s => {
-              if (!bySubj[s.subjectId]) bySubj[s.subjectId] = { subjectId: s.subjectId, color: liveColor(s.subjectId, s.subjectColor), name: s.subjectName, minutes: 0 };
+              if (!bySubj[s.subjectId]) bySubj[s.subjectId] = { subjectId: s.subjectId, color: sc(liveColor(s.subjectId, s.subjectColor)), name: s.subjectName, minutes: 0 };
               bySubj[s.subjectId].minutes += s.minutes;
             });
             const subjList = Object.values(bySubj);
@@ -1184,7 +1412,7 @@ function SessionTimeline({ sessions, subjects, fmtTime, showEmptyDays, onEditSes
             {(byDate[expandedDay] || []).length === 0 && <div style={{ fontSize: 12, color: D.muted, padding: "6px 0" }}>Sin sesiones este día</div>}
             {(byDate[expandedDay] || []).map(s => (
               <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", borderBottom: "1px solid " + D.border }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: liveColor(s.subjectId, s.color), flexShrink: 0 }} />
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: sc(liveColor(s.subjectId, s.color)), flexShrink: 0 }} />
                 <span style={{ fontSize: 12, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.subjectName}</span>
                 <span style={{ fontSize: 11, color: D.muted, flexShrink: 0 }}>{fmtTime(s.minutes)}</span>
                 <button onClick={() => onEditSession(s)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 12, padding: "2px 4px" }}>✎</button>
@@ -1263,6 +1491,98 @@ export default function App() {
 }
 
 
+// ─── Tutorial ──────────────────────────────────────────────────────────────────
+// Tour guiado la primera vez: oscurece la app, ilumina `target` (un
+// data-tour="…") y cambia a `tab` para que se vea la sección de verdad. Si el
+// objetivo no está en pantalla (p. ej. una pestaña oculta), la tarjeta sale
+// centrada sin foco.
+const TOUR = [
+  { tab: "timer", title: "¡Bienvenido a LixT!",
+    text: "Te enseño en un minuto cómo funciona. Todo cuelga de tu programa de estudio: dentro van las asignaturas, de cada asignatura salen las tareas y exámenes, y con sus notas se calcula tu media." },
+  { tab: "subjects", target: "new-subject", title: "1. Crea tus asignaturas",
+    text: "Es lo primero. Cada asignatura tiene un color, créditos, curso y cuatrimestre. Cuando la apruebes, archívala con ✓ y pasa a contar para tu media de la carrera." },
+  { tab: "tasks", target: "new-task", title: "2. Tareas y exámenes",
+    text: "Con «+ Nueva» apuntas exámenes, entregas (con hora límite) y prácticas. A cualquiera le puedes poner recordatorios para que te avise antes, y una entrega puede ir enlazada a su práctica. Marca la casilla cuando los termines." },
+  { tab: "tasks", target: "nav-tasks", title: "Ponerles nota",
+    text: "Al editar una tarea le pones la nota y su peso (%) en la asignatura, o la marcas como puntos extra. Si no te presentaste, pulsa NP: queda anotado pero no hace media. Las completadas sin nota te aparecen a la derecha, en «Pendientes de nota»." },
+  { tab: "calendar", target: "nav-calendar", title: "3. Calendario",
+    text: "Todas tus entregas y exámenes por día. Pulsa el ＋ de un día para apuntar una nota rápida que te avisa a su hora. Desde Ajustes puedes exportar o importar el calendario en .ics (Google Calendar, Outlook…)." },
+  { tab: "horario", target: "nav-horario", title: "4. Horario",
+    text: "Tus clases de la semana, organizadas por curso." },
+  { tab: "timer", target: "nav-timer", title: "5. Focus",
+    text: "Un temporizador pomodoro. Elige asignatura y tarea, y cada sesión queda registrada como tiempo de estudio. Estudiar cada día mantiene tu racha." },
+  { tab: "grades", target: "nav-grades", title: "6. Notas",
+    text: "La nota de cada asignatura se calcula sola a partir de las de sus tareas. Aquí ves tu media ponderada por créditos y cuánto llevas de carrera. Si la nota oficial es otra, puedes ponerla a mano." },
+  { tab: "stats", target: "nav-stats", title: "7. Estadísticas",
+    text: "Horas estudiadas, reparto por asignatura y cómo evolucionan tus notas." },
+  { tab: "timer", target: "sidebar-info", title: "Siempre a la vista",
+    text: "Abajo a la izquierda tienes los próximos exámenes con los días que faltan y el temporizador de la sesión en curso, estés en la pestaña que estés." },
+  { tab: "settings", target: "account", title: "8. Cuenta (opcional)",
+    text: "La app funciona sin cuenta: todo se guarda en este equipo. Si creas una cuenta aquí, tus datos se sincronizan con la nube y los tienes también en el móvil y en otros ordenadores." },
+  { tab: "settings", target: "tour-restart", title: "¡Listo!",
+    text: "En Ajustes también están el tema, las copias de seguridad y más. Si quieres repetir este tutorial, está aquí. Empecemos por tu primera asignatura." },
+];
+
+function Tour({ step, onStep, onClose }) {
+  const cur = TOUR[step];
+  const [rect, setRect] = useState(null);
+  const last = step === TOUR.length - 1;
+  const next = () => last ? onClose(true) : onStep(step + 1);
+  useEffect(() => {
+    // Tras cambiar de pestaña el objetivo aún no existe: se mide en el siguiente tick
+    const measure = () => {
+      const el = cur.target && document.querySelector(`[data-tour="${cur.target}"]`);
+      if (el) el.scrollIntoView({ block: "nearest" });
+      setRect(el ? el.getBoundingClientRect() : null);
+    };
+    // Segunda medida por si la pestaña tardó en pintarse (pasos saltados rápido)
+    const ids = [setTimeout(measure, 60), setTimeout(measure, 350)];
+    window.addEventListener("resize", measure);
+    return () => { ids.forEach(clearTimeout); window.removeEventListener("resize", measure); };
+  }, [step]);
+  useEffect(() => {
+    const key = e => {
+      if (e.key === "Escape") onClose(false);
+      if (e.key === "ArrowRight") next();
+      if (e.key === "ArrowLeft" && step > 0) onStep(step - 1);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  });
+
+  // Tarjeta a la derecha del foco; si no cabe, a la izquierda; si tampoco, debajo
+  const W = 340, PAD = 8, vw = window.innerWidth, vh = window.innerHeight;
+  let pos = { left: (vw - W) / 2, top: vh / 2 - 110 };
+  if (rect) {
+    if (rect.right + 16 + W < vw)   pos = { left: rect.right + 16,    top: rect.top };
+    else if (rect.left - 16 - W > 0) pos = { left: rect.left - 16 - W, top: rect.top };
+    else                             pos = { left: Math.min(vw - W - 16, Math.max(16, rect.left)), top: rect.bottom + 16 };
+    pos.top = Math.min(vh - 240, Math.max(16, pos.top));
+  }
+  const btn = primary => ({ padding: "7px 14px", borderRadius: 8, border: primary ? "none" : "1px solid " + D.border, background: primary ? D.accent : "none", color: primary ? "#fff" : D.muted, fontSize: 12, cursor: "pointer", fontWeight: primary ? 500 : 400 });
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, fontFamily: FONT }}>
+      {/* Foco: un hueco con una sombra enorme que oscurece todo lo demás */}
+      <div style={rect
+        ? { position: "fixed", left: rect.left - PAD, top: rect.top - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2, borderRadius: 10, boxShadow: "0 0 0 9999px rgba(0,0,0,.6)", border: "2px solid " + D.accent, transition: "all .25s ease", pointerEvents: "none" }
+        : { position: "fixed", inset: 0, background: "rgba(0,0,0,.6)" }} />
+      <div style={{ position: "fixed", ...pos, width: W, background: D.card, border: "1px solid " + D.border, borderRadius: 12, padding: "18px 20px", boxShadow: "0 12px 40px rgba(0,0,0,.5)", transition: "all .25s ease" }}>
+        <div style={{ fontSize: 11, color: D.muted, marginBottom: 6 }}>Paso {step + 1} de {TOUR.length}</div>
+        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: D.text }}>{cur.title}</div>
+        <div style={{ fontSize: 13, lineHeight: 1.5, color: D.text, opacity: .85, marginBottom: 16 }}>{cur.text}</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {!last && <button onClick={() => onClose(false)} style={{ ...btn(false), border: "none", paddingLeft: 0 }}>Saltar</button>}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            {step > 0 && <button onClick={() => onStep(step - 1)} style={btn(false)}>Atrás</button>}
+            <button onClick={next} style={btn(true)}>{last ? "Crear mi primera asignatura" : "Siguiente"}</button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Onboarding ────────────────────────────────────────────────────────────────
 //
 // Componente propio, no un `return` temprano dentro de la app. Un return antes de
@@ -1284,6 +1604,7 @@ function Onboarding({ onFinish }) {
       durations: { work: 25, short: 5, long: 15 }, longEvery: 4,
     };
     localStorage.setItem("lixt_v2", JSON.stringify(newState));
+    localStorage.setItem("lixt_tour_pending", "true");
     onFinish(newState);
   }
 
@@ -1298,7 +1619,7 @@ function Onboarding({ onFinish }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
             <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Nombre del programa</div>
-            <input autoFocus placeholder="Ej: Ingeniería Aeronáutica, Máster en IA…" value={onboardForm.name} onChange={e => setOnboardForm(f => ({ ...f, name: e.target.value }))} onKeyDown={e => e.key === "Enter" && finishOnboarding()} style={{ ...inp, fontSize: 14, padding: "10px 14px" }} />
+            <input autoFocus placeholder="Ej: Ingeniería Aeronáutica, Máster en IA…" value={onboardForm.name} onChange={e => setOnboardForm(f => ({ ...f, name: e.target.value }))} onKeyDown={e => e.key === "Enter" && finishOnboarding()} style={{ ...inp(), fontSize: 14, padding: "10px 14px" }} />
           </div>
 
           <div>
@@ -1335,7 +1656,7 @@ function Onboarding({ onFinish }) {
           <div>
             <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Color del programa</div>
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-              {COLORS.map(c => <div key={c} onClick={() => setOnboardForm(f => ({ ...f, color: c }))} style={{ width: 26, height: 26, borderRadius: "50%", background: c, cursor: "pointer", border: onboardForm.color === c ? "3px solid " + D.text : "3px solid transparent" }} />)}
+              <ColorPick value={onboardForm.color} onChange={c => setOnboardForm(f => ({ ...f, color: c }))} />
             </div>
           </div>
 
@@ -1397,6 +1718,8 @@ function LixtMain({ appState, setAppState }) {
   // Los setters siguen operando sobre el array completo (con los borrados dentro).
   const subjects = useMemo(() => alive(activePData.subjects), [activePData.subjects]);
   const tasks    = useMemo(() => alive(activePData.tasks),    [activePData.tasks]);
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
   const sessions = useMemo(() => alive(activePData.sessions), [activePData.sessions]);
   const schedule = useMemo(() => alive(activePData.schedule), [activePData.schedule]);
   const cycle    = sessions.length;
@@ -1471,7 +1794,7 @@ function LixtMain({ appState, setAppState }) {
   // La sesión suele recuperarse en milisegundos, así que sin un tiempo mínimo la
   // pantalla de carga aparecería y desaparecería sin llegar a verse.
   const [splashDone,  setSplashDone]  = useState(false);
-  const [skipAuth,    setSkipAuth]    = useState(() => ls("lixt_skip_auth", false));
+  const [tourStep,    setTourStep]    = useState(() => ls("lixt_tour_pending", false) ? 0 : null);
   const syncingRef = useRef(false);   // evita dos sincronizaciones a la vez
   const [syncBusy,   setSyncBusy]   = useState(false);
   const [syncMsg,    setSyncMsg]    = useState("");
@@ -1604,7 +1927,13 @@ function LixtMain({ appState, setAppState }) {
   }, [navItems]);
 
   // Tema dinámico (debe ir después de los estados que usa)
-  const D = useMemo(() => makeTheme(activeProgram?.color || "#378ADD", bgTheme), [activeProgram?.color, bgTheme]);
+  // El tema es un objeto MUTABLE compartido, igual que en el móvil (theme.js).
+  // Card, StatCard y compañía viven FUERA de App y leen la `D` del módulo, así
+  // que crear aquí un objeto nuevo solo cambiaba los colores de App: con los
+  // cuatro fondos oscuros apenas se notaba, pero con el claro las tarjetas se
+  // quedaban negras sobre papel. Se muta antes de pintar a los hijos, que se
+  // repintan igualmente porque `bgTheme` es estado de App.
+  Object.assign(D, makeTheme(activeProgram?.color || "#378ADD", bgTheme));
   const [addingProg, setAddingProg] = useState(false);
   const [newProg,    setNewProg]    = useState({ name: "", type: "career", years: 4, semestersPerYear: 2, color: "#378ADD" });
   const [editingProgId, setEditingProgId] = useState(null);
@@ -1612,8 +1941,7 @@ function LixtMain({ appState, setAppState }) {
 
   const emptyManual = { subjectId: "", taskId: "", minutes: "", date: today(), note: "" };
 
-  // Ambas delegan en logic.js; aquí solo se aporta el fallback cuando el día está vacío
-  const getDefaultTaskId = subjId => defaultTaskId(tasks, subjId);
+  // Delega en logic.js; aquí solo se aporta el fallback cuando el día está vacío
 
   function getMostStudied(date) {
     const found = mostStudied(sessions, tasks, date);
@@ -1622,6 +1950,19 @@ function LixtMain({ appState, setAppState }) {
     return { subjectId: fallback, taskId: defaultTaskId(tasks, fallback) };
   }
   const [manualForm, setManualForm] = useState(emptyManual);
+  // Tareas que había ese día para la asignatura del formulario manual
+  const manualTasksFor = (subjId, date) => tasksOnDate(tasks, subjId === NO_SUBJ ? null : subjId, date || today());
+  // La tarea propuesta se queda si existía ese día; si no, la de entrega más próxima
+  const pickManualTask = (subjId, date, taskId) => {
+    const list = manualTasksFor(subjId, date);
+    return list.some(t => String(t.id) === String(taskId)) ? String(taskId) : String(list[0]?.id ?? "");
+  };
+  function openManual(date, subjId, taskId) {
+    // mostStudied devuelve "null" (clave de objeto) para las sesiones sin asignatura
+    const sid = subjId === "null" ? NO_SUBJ : subjId;
+    setManualForm({ ...emptyManual, date, subjectId: sid, taskId: pickManualTask(sid, date, taskId) });
+    setShowManualModal(true);
+  }
   const [showManualModal, setShowManualModal] = useState(false);
 
   const [showTaskModal,    setShowTaskModal]    = useState(false);
@@ -1645,11 +1986,16 @@ function LixtMain({ appState, setAppState }) {
   useEffect(() => { setGradeConfig({ gradeScale }); }, [gradeScale]);
 
   // Sync selSubject / selTask when subjects or tasks change
+  const looseTasks = useMemo(() => tasks.filter(t => !t.subjectId && t.status !== "completada").sort(byDueDate), [tasks]);
   useEffect(() => {
-    if (activeSubjects.length === 0) return;
+    if (selSubject === NO_SUBJ && looseTasks.length) {
+      if (!looseTasks.find(t => t.id === selTask)) setSelTask(looseTasks[0].id);
+      return;
+    }
+    if (activeSubjects.length === 0) { if (looseTasks.length) setSelSubject(NO_SUBJ); return; }
     const validSubj = activeSubjects.find(s => s.id === selSubject) ?? activeSubjects[0];
     if (validSubj.id !== selSubject) { setSelSubject(validSubj.id); return; }
-    const pending = tasks.filter(t => t.subjectId === validSubj.id && t.status !== "completada");
+    const pending = pendingTasks(tasks, validSubj.id);
     if (pending.length === 0) { setSelTask(null); return; }
     if (!pending.find(t => t.id === selTask)) setSelTask(pending[0].id);
   }, [activeSubjects, tasks]);
@@ -1658,6 +2004,7 @@ function LixtMain({ appState, setAppState }) {
     subjectId: activeSubjects[0]?.id || null,
     title: "", priority: "media", dueDate: today(),
     hour: "", status: "pendiente", type: "tarea", gradeMode: "pct", grade: "", pct: "", pts: "",
+    np: false, reminders: null, parentId: null,
   }), [activeSubjects]);
 
   const [taskForm,      setTaskForm]      = useState(emptyTask);
@@ -1681,6 +2028,10 @@ function LixtMain({ appState, setAppState }) {
   useEffect(() => lsSet("lixt_lasttask",    selTask),   [selTask]);
   useEffect(() => lsSet("lixt_calview",     calendarView), [calendarView]);
   useEffect(() => lsSet("lixt_bg_theme",    bgTheme),   [bgTheme]);
+  // index.css pinta el fondo del documento, y en claro asomaba por los bordes al
+  // rebotar el scroll. Se sigue al tema desde aquí en vez de duplicar la paleta
+  // en el CSS.
+  useEffect(() => { document.body.style.background = D.bg; }, [D.bg]);
   useEffect(() => lsSet("lixt_timer_sound", timerSound),[timerSound]);
   useEffect(() => lsSet("lixt_timer_notif", timerNotif),[timerNotif]);
   useEffect(() => lsSet("lixt_pass_grade",  passingGrade),[passingGrade]);
@@ -1785,11 +2136,14 @@ function LixtMain({ appState, setAppState }) {
     if (!window.confirm("¿Cerrar sesión? Tus datos locales no se borran.")) return;
     try {
       await signOut();
-      // Al salir a propósito se vuelve a mostrar el login, no la app sin cuenta
-      setSkipAuth(false); lsSet("lixt_skip_auth", false);
     } catch (e) { setAuthError(authErrorMessage(e)); }
   }
   useEffect(() => lsSet("lixt_nav_order",   navOrder),  [navOrder]);
+  useEffect(() => { if (tourStep !== null && TOUR[tourStep].tab) setTab(TOUR[tourStep].tab); }, [tourStep]);
+  function closeTour(done) {
+    setTourStep(null); lsSet("lixt_tour_pending", false);
+    if (done) { setTab("subjects"); if (activeSubjects.length === 0) openNewSubj(); }
+  }
   useEffect(() => localStorage.setItem("lixt_collapsed", JSON.stringify([...collapsedSubjects])), [collapsedSubjects]);
 
   // ── Easter egg: contraseña se escribe en el input del hint ─────────────────
@@ -1840,7 +2194,7 @@ function LixtMain({ appState, setAppState }) {
   const makeSession = useCallback((mins) => {
     const subj = subjects.find(s => s.id === selSubject);
     const task = tasks.find(tk => tk.id === selTask);
-    return touch({ id: newId(), date: today(), subjectId: selSubject, subjectName: subj?.name || "Sin asignatura", subjectColor: subj?.color || "#888", taskTitle: task?.title || null, minutes: mins });
+    return touch({ id: newId(), date: today(), subjectId: selSubject === NO_SUBJ ? null : selSubject, subjectName: subj?.name || "Sin asignatura", subjectColor: subj?.color || "#888", taskTitle: task?.title || null, minutes: mins });
   }, [subjects, tasks, selSubject, selTask]);
 
   // Si cierras la app con el timer de trabajo corriendo, guarda ese tiempo como sesión
@@ -1909,6 +2263,39 @@ function LixtMain({ appState, setAppState }) {
     }
   }
 
+  const [linkHover, setLinkHover] = useState(null);
+
+  // ── Recordatorios ──
+  // El ordenador solo puede avisar con la app abierta: cada 30 s se miran los
+  // avisos que han caído desde la última vez. Al abrir, los que saltaron con la
+  // app cerrada no se lanzan de golpe como notificaciones: se enseñan en una
+  // tarjeta. Uno por tarea (con "insistir" podrían ser muchos).
+  const [missedReminders, setMissedReminders] = useState([]);
+  useEffect(() => {
+    const check = first => {
+      const now = Date.now(), last = ls("lixt_remind_last", null);
+      lsSet("lixt_remind_last", now);
+      if (last === null) return;
+      const due = dueReminders(tasksRef.current, last, now, HORA_AVISO);
+      const porTarea = [...new Map(due.map(d => [d.task.id, d])).values()];
+      if (!porTarea.length) return;
+      if (first) { setMissedReminders(porTarea); return; }
+      for (const { task } of porTarea) {
+        const label = TASK_TYPES.find(x => x.key === task.type)?.label || "Tarea";
+        void sendNotif("🔔 " + task.title, `${label} · ${task.dueDate}${task.hour ? " " + task.hour : ""}`);
+      }
+    };
+    check(true);
+    const id = setInterval(() => check(false), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // "Trabajo" ya no es un tipo: lo que llegue así (datos viejos, otro dispositivo
+  // sin actualizar) pasa a entrega.
+  useEffect(() => {
+    if (tasks.some(t => t.type === "trabajo")) setTasks(prev => prev.map(migrateTaskType));
+  }, [tasks]);
+
   function openNewTask(subjOverride) {
     setEditTaskId(null);
     const subj = subjOverride || activeSubjects[0];
@@ -1923,25 +2310,47 @@ function LixtMain({ appState, setAppState }) {
   }
   function openEditTask(t) {
     setEditTaskId(t.id);
-    setTaskForm({ subjectId: t.subjectId, title: t.title, priority: t.priority, dueDate: t.dueDate, hour: t.hour || "", status: t.status, type: t.type, gradeMode: t.gradeMode || "pct", grade: t.grade ?? "", pct: t.pct ?? "", pts: t.pts ?? "" });
+    setTaskForm({ subjectId: t.subjectId, title: t.title, priority: t.priority, dueDate: t.dueDate, hour: t.hour || "", status: t.status, type: t.type, gradeMode: t.gradeMode || "pct", grade: t.grade ?? "", pct: t.pct ?? "", pts: t.pts ?? "", np: !!t.np, reminders: t.reminders ?? null, parentId: t.parentId ?? null });
     setShowTaskModal(true);
   }
+  // Devuelve el id guardado (lo usa "＋ Entrega asociada", que guarda antes la práctica)
   function saveTask() {
-    if (!taskForm.title.trim()) return;
+    if (!taskForm.title.trim()) return null;
     const tt = TASK_TYPES.find(t => t.key === taskForm.type);
-    const mode = taskForm.gradeMode === "points" ? "points" : "pct";
-    const grade = tt?.hasGrade ? parseNum(taskForm.grade) : null;
+    const mode = taskForm.gradeMode === "points" ? "points"
+      : taskForm.gradeMode === "none" && taskForm.type !== "examen" ? "none" : "pct";
+    const conNota = !!tt?.hasGrade && mode !== "none";
+    const np = conNota && !!taskForm.np;
+    // NP y "sin nota" dejan grade en null, así que los cálculos de media ya lo ignoran
+    const grade = conNota && !np ? parseNum(taskForm.grade) : null;
+    const rem = taskForm.reminders;
     const p = {
       ...taskForm,
       subjectId: taskForm.subjectId ? String(taskForm.subjectId) : null,
       gradeMode: mode,
-      grade,
+      grade, np,
       pct: mode === "pct"    ? parseNum(taskForm.pct, { min: 0, max: 100 }) : null,
       pts: mode === "points" ? parseNum(taskForm.pts) : null,
+      reminders: rem && rem.list?.length ? rem : null,
+      parentId: taskForm.type === "tarea" ? taskForm.parentId || null : null,
     };
+    const id = editTaskId || newId();
     if (editTaskId) setTasks(prev => prev.map(t => t.id === editTaskId ? touch({ ...t, ...p }) : t));
-    else setTasks(prev => [...prev, touch({ id: newId(), ...p })]);
+    else setTasks(prev => [...prev, touch({ id, ...p })]);
     setShowTaskModal(false);
+    return id;
+  }
+  // Guarda la práctica y abre una entrega enlazada, una semana después
+  function addChildDelivery() {
+    const parent = taskForm;
+    const pid = saveTask();
+    if (!pid) return;
+    const d = parseDate(parent.dueDate || today());
+    d.setDate(d.getDate() + 7);
+    setEditTaskId(null);
+    setTaskForm({ ...emptyTask, type: "tarea", subjectId: parent.subjectId, parentId: pid, dueDate: fmtDate(d), hour: "23:59",
+      title: "Entrega · " + parent.title });
+    setShowTaskModal(true);
   }
   function deleteTask(id)   { if (!window.confirm("¿Eliminar esta tarea?")) return; setTasks(prev => prev.map(t => t.id === id ? softDelete(t) : t)); }
   function toggleStatus(id) { setTasks(prev => prev.map(t => t.id === id ? touch({ ...t, status: t.status === "completada" ? "pendiente" : "completada" }) : t)); }
@@ -2029,7 +2438,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
       el.style.maxWidth = "1110px";
 
       const canvas = await html2canvas(el, {
-        backgroundColor: "#0a0c12",
+        backgroundColor: D.bg,
         scale: 2,
         useCORS: true,
         logging: false,
@@ -2288,6 +2697,9 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
     return [...pending, ...completed];
   }, [sortedTasks, filterSubj, filterStatus, filterTaskCourse]);
 
+  // Las entregas van justo debajo de su práctica cuando las dos están en la lista
+  const shownTasks = useMemo(() => nestChildren(filteredTasks), [filteredTasks]);
+
   const taskCourses = useMemo(
     () => [...new Set(tasks.filter(t => t.dueDate).map(t => academicCourseOf(t.dueDate)))].sort((a, b) => b - a),
     [tasks]);
@@ -2296,7 +2708,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
 
   const progress    = 1 - timeLeft / durSec[mode];
   const R = 100, circ = 2 * Math.PI * R;
-  const subjColor   = activeSubjects.find(s => s.id === selSubject)?.color ?? D.accent;
+  const subjColor   = sc(activeSubjects.find(s => s.id === selSubject)?.color ?? D.accent);
   // todos los modos usan el color de la asignatura
   const strokeColor = subjColor;
   const cycleDots   = Array.from({ length: longEvery }, (_, i) => i < workCount);
@@ -2304,10 +2716,13 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
   const moveCal     = (delta) => { const [m, y] = shiftMonth(calMonth, calYear, delta);         setCalMonth(m);     setCalYear(y);     };
 
   // Datos para el CustomSelect del timer
-  const timerSubjOptions = useMemo(() => activeSubjects.map(s => ({ value: s.id, label: s.name })), [activeSubjects]);
+  const timerSubjOptions = useMemo(() => [
+    ...activeSubjects.map(s => ({ value: s.id, label: s.name })),
+    ...(looseTasks.length ? [{ value: NO_SUBJ, label: "Sin asignatura" }] : []),
+  ], [activeSubjects, looseTasks]);
   const timerTaskOptions = useMemo(
-    () => pendingTasks(tasks, selSubject).map(t => ({ value: t.id, label: t.title })),
-    [tasks, selSubject]
+    () => (selSubject === NO_SUBJ ? looseTasks : pendingTasks(tasks, selSubject)).map(t => ({ value: t.id, label: t.title })),
+    [tasks, selSubject, looseTasks]
   );
 
   // ── Pantalla de carga: mientras se comprueba si hay sesión guardada ─────────
@@ -2339,54 +2754,6 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
     </div>
   );
 
-  // ── Login inicial ───────────────────────────────────────────────────────────
-  // Se puede entrar sin cuenta: los datos son locales y bloquear el acceso por no
-  // tener red dejaría al usuario sin poder abrir lo suyo.
-  if (!session && !skipAuth) return (
-    <div style={FULLSCREEN}>
-      <style>{LOADING_CSS}</style>
-      <div style={{
-        background: D.card, border: "1px solid " + D.border, borderRadius: 16, padding: "38px 42px",
-        width: 400, maxWidth: "90vw", animation: "lixtRise 0.45s cubic-bezier(.2,.8,.3,1) both",
-      }}>
-        <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: -1.2, marginBottom: 6, color: D.text }}>
-          Lix<span style={{ color: D.accent }}>T</span>
-        </div>
-        <div style={{ fontSize: 13, color: D.muted, marginBottom: 26 }}>
-          Entra con tu cuenta para sincronizar con el móvil.
-        </div>
-
-        <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid " + D.border, width: "fit-content", marginBottom: 16 }}>
-          {[["signin", "Entrar"], ["signup", "Crear cuenta"]].map(([k, label]) => (
-            <button key={k} onClick={() => { setAuthMode(k); setAuthError(""); setAuthInfo(""); }}
-              style={{ padding: "7px 16px", border: "none", background: authMode === k ? D.accent : D.card2, color: authMode === k ? "#fff" : D.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <input type="email" placeholder="tu@email.com" value={authForm.email} autoComplete="username"
-            onChange={e => setAuthForm(f => ({ ...f, email: e.target.value }))}
-            onKeyDown={e => e.key === "Enter" && handleAuth()} style={{ ...inp, fontFamily: "inherit" }} />
-          <input type="password" placeholder="Contraseña" value={authForm.password} autoComplete="current-password"
-            onChange={e => setAuthForm(f => ({ ...f, password: e.target.value }))}
-            onKeyDown={e => e.key === "Enter" && handleAuth()} style={{ ...inp, fontFamily: "inherit" }} />
-          {authError && <div style={{ fontSize: 12, color: D.red, padding: "7px 10px", borderRadius: 6, background: D.red + "11" }}>{authError}</div>}
-          {authInfo  && <div style={{ fontSize: 12, color: D.green, padding: "7px 10px", borderRadius: 6, background: D.green + "11" }}>{authInfo}</div>}
-          <button onClick={handleAuth} disabled={authBusy || !authForm.email || !authForm.password}
-            style={{ padding: "11px 0", borderRadius: 8, border: "none", background: (authBusy || !authForm.email || !authForm.password) ? D.card2 : D.accent, color: (authBusy || !authForm.email || !authForm.password) ? D.muted : "#fff", fontSize: 14, fontWeight: 500, cursor: (authBusy || !authForm.email || !authForm.password) ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
-            {authBusy ? "Un momento…" : authMode === "signup" ? "Crear cuenta" : "Entrar"}
-          </button>
-          <button onClick={() => { setSkipAuth(true); lsSet("lixt_skip_auth", true); }}
-            style={{ padding: "9px 0", borderRadius: 8, border: "none", background: "none", color: D.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-            Usar sin cuenta (solo en este equipo)
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -2395,6 +2762,20 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
         "::-webkit-scrollbar { width: 5px; background: " + D.bg + "; }",
         "::-webkit-scrollbar-thumb { background: " + D.border + "; border-radius: 3px; }",
       ].join("\n")}</style>
+
+      {tourStep !== null && <Tour step={tourStep} onStep={setTourStep} onClose={closeTour} />}
+      {missedReminders.length > 0 && (
+        <div style={{ position: "fixed", right: 20, bottom: 20, zIndex: 400, width: 320, background: D.card, border: "1px solid " + D.border, borderRadius: 12, padding: "14px 16px", boxShadow: "0 12px 40px rgba(0,0,0,.45)" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>🔔 Avisos mientras la app estaba cerrada</div>
+          {missedReminders.map(({ task, at }) => (
+            <div key={task.id} onClick={() => openEditTask(task)} style={{ fontSize: 12, padding: "6px 8px", borderRadius: 7, background: D.card2, marginBottom: 5, cursor: "pointer" }}>
+              <div style={{ fontWeight: 500 }}>{task.title}</div>
+              <div style={{ color: D.muted, fontSize: 11 }}>{task.dueDate}{task.hour ? " · " + task.hour : ""} · avisó {fmtWhen(at)}</div>
+            </div>
+          ))}
+          <button onClick={() => setMissedReminders([])} style={{ marginTop: 4, width: "100%", padding: "7px 0", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 12, cursor: "pointer" }}>Entendido</button>
+        </div>
+      )}
 
       {/* ── Sidebar ── */}
       <div style={{ width: 220, background: D.sidebar, borderRight: "1px solid " + D.border, display: "flex", flexDirection: "column", flexShrink: 0 }}>
@@ -2408,12 +2789,12 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
         </div>
         <nav style={{ padding: 10, flex: 1, overflowY: "auto" }}>
           {[...navItems, NAV.find(n => n.k === "settings")].map(({ k, icon, label }) => (
-              <button key={k} onClick={() => setTab(k)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", borderRadius: 8, border: "none", background: tab === k ? D.accent + "22" : "transparent", color: tab === k ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: tab === k ? 500 : 400, marginBottom: 2, textAlign: "left" }}>
+              <button key={k} data-tour={"nav-" + k} onClick={() => setTab(k)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", borderRadius: 8, border: "none", background: tab === k ? D.accent + "22" : "transparent", color: tab === k ? D.accent : D.muted, fontSize: 13, cursor: "pointer", fontWeight: tab === k ? 500 : 400, marginBottom: 2, textAlign: "left" }}>
                 <span style={{ fontSize: 15, width: 20, textAlign: "center" }}>{icon}</span>{label}
               </button>
           ))}
         </nav>
-        <div style={{ padding: "12px 14px", borderTop: "1px solid " + D.border }}>
+        <div data-tour="sidebar-info" style={{ padding: "12px 14px", borderTop: "1px solid " + D.border }}>
           <div style={{ fontSize: 10, color: D.muted, fontWeight: 500, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>Próximos exámenes</div>
           {upcomingExams.length === 0 && <div style={{ fontSize: 12, color: D.muted }}>Sin exámenes</div>}
           {upcomingExams.map(t => {
@@ -2459,11 +2840,16 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
           {/* ══ Focus / Timer ══ */}
           {tab === "timer" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, alignItems: "start" }}>
+            {/* Sin `alignItems: start`: las dos columnas miden lo mismo y el hueco
+                sobrante se lo queda la tarjeta flexible de cada una (el cronómetro
+                a la izquierda, las sesiones a la derecha). Debajo de esas dos hay
+                exactamente lo mismo — un hueco de 16 y una tarjeta de ALTO_RESUMEN —,
+                así que sus bordes de abajo coinciden pase lo que pase. */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
 
               {/* Izquierda — Cronómetro + racha */}
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <Card>
+              <Card style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
                 <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 14, color: D.muted }}>Temporizador</div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
                   {[["work","Trabajo"],["short","Corto"],["long","Largo"]].map(([m, label]) => (
@@ -2475,7 +2861,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   {Array.from({ length: longEvery }, (_, i) => <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: i < workCount ? D.accent : D.border, transition: "background 0.3s" }} />)}
                 </div>
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-                  <svg width="240" height="240" viewBox="0 0 240 240">
+                  <svg width="280" height="280" viewBox="0 0 240 240">
                     <circle cx="120" cy="120" r={R} fill="none" stroke={D.card2} strokeWidth="12" />
                     <circle cx="120" cy="120" r={R} fill="none" stroke={strokeColor} strokeWidth="12"
                       strokeDasharray={circ} strokeDashoffset={circ * (1 - progress)}
@@ -2513,7 +2899,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ fontSize: 12, color: D.muted, textAlign: "center", marginTop: 8 }}>Ciclo #{cycle + 1} · {cycle} completados</div>
               </Card>
 
-                <Card style={{ display: "flex", alignItems: "center", gap: 13 }}>
+                <Card style={{ display: "flex", alignItems: "center", gap: 13, height: ALTO_RESUMEN }}>
                   <span style={{ fontSize: 26, lineHeight: 1, filter: racha.dias ? "none" : "grayscale(1)", opacity: racha.dias ? 1 : 0.5 }}>🔥</span>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 18, fontWeight: 600, color: racha.dias ? D.amber : D.muted }}>
@@ -2534,14 +2920,14 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <Card>
                   <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12, color: D.muted }}>Asignar sesión</div>
-                  {activeSubjects.length === 0
+                  {timerSubjOptions.length === 0
                     ? <div style={{ fontSize: 12, color: D.muted, textAlign: "center", padding: "8px 0" }}>Sin asignaturas activas</div>
                     : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         <CustomSelect
                           value={selSubject ?? timerSubjOptions[0]?.value}
                           onChange={sid => {
                             setSelSubject(sid);
-                            const first = tasks.find(t => t.subjectId === sid && t.status !== "completada");
+                            const first = sid === NO_SUBJ ? looseTasks[0] : pendingTasks(tasks, sid)[0];
                             setSelTask(first?.id ?? null);
                           }}
                           options={timerSubjOptions}
@@ -2558,10 +2944,10 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                       </div>
                   }
                 </Card>
-                <Card>
+                <Card style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, color: D.muted }}>Sesiones recientes</div>
-                    <button onClick={() => { const sid = selSubject ?? activeSubjects[0]?.id ?? ""; setManualForm({ ...emptyManual, subjectId: sid, taskId: selTask ? String(selTask) : getDefaultTaskId(sid) }); setShowManualModal(true); }} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: D.accent, fontSize: 12, cursor: "pointer", fontWeight: 500 }}>
+                    <button onClick={() => openManual(today(), selSubject ?? activeSubjects[0]?.id ?? "", selTask)} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: D.accent, fontSize: 12, cursor: "pointer", fontWeight: 500 }}>
                       ＋ Sesión manual
                     </button>
                   </div>
@@ -2572,7 +2958,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                       ids eran Date.now() pero con UUID es comparación de texto: cada
                       sesión manual aparecía o no según su primera letra. */}
                   {recentSessions.map(s => (
-                    <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, borderLeft: "3px solid " + (subjects.find(x => x.id === s.subjectId)?.color || s.subjectColor), marginBottom: 5, background: D.card2 }}>
+                    <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, borderLeft: "3px solid " + sc((subjects.find(x => x.id === s.subjectId)?.color || s.subjectColor)), marginBottom: 5, background: D.card2 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.subjectName}</div>
                         {s.taskTitle && <div style={{ fontSize: 11, color: D.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.taskTitle}</div>}
@@ -2583,7 +2969,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     </div>
                   ))}
                 </Card>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, height: ALTO_RESUMEN }}>
                   <StatCard label="Hoy" value={fmtTime(sessions.filter(s => s.date === todayStr).reduce((a, s) => a + s.minutes, 0))} color={D.accent} />
                   <StatCard label="Ciclos totales" value={cycle} />
                 </div>
@@ -2603,7 +2989,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   ))}
                 </div>
               </div>
-              <SessionTimeline sessions={timelineSessions} subjects={subjects} fmtTime={fmtTime} showEmptyDays={showEmptyDays} onEditSession={openEditSession} onDeleteSession={deleteSession} onAddSession={d => { const { subjectId, taskId } = getMostStudied(d); setManualForm({ ...emptyManual, date: d, subjectId, taskId }); setShowManualModal(true); }} />
+              <SessionTimeline sessions={timelineSessions} subjects={subjects} fmtTime={fmtTime} showEmptyDays={showEmptyDays} onEditSession={openEditSession} onDeleteSession={deleteSession} onAddSession={d => { const { subjectId, taskId } = getMostStudied(d); openManual(d, subjectId, taskId); }} />
             </Card>
 
             </div>
@@ -2643,7 +3029,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   </button>
                 ))}
                 <div style={{ fontSize: 12, color: D.muted, marginLeft: 4 }}>{visibleSubjs.length} asignatura{visibleSubjs.length !== 1 ? "s" : ""}</div>
-                <button onClick={openNewSubj} style={{ marginLeft: "auto", padding: "8px 18px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 500 }}>+ Nueva asignatura</button>
+                <button data-tour="new-subject" onClick={openNewSubj} style={{ marginLeft: "auto", padding: "8px 18px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 500 }}>+ Nueva asignatura</button>
               </div>
 
               {/* Activas */}
@@ -2671,7 +3057,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   )}
                   {(showApproved || filterSubjStatus === "approved") && approvedVisible.map(s => (
                     <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 8, background: D.card, marginBottom: 6, border: "1px solid " + D.green + "44" }}>
-                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: sc(s.color), flexShrink: 0 }} />
                       <span style={{ fontSize: 13, flex: 1, color: D.text }}>{s.name}</span>
                       {s.year && <span style={{ fontSize: 11, color: D.muted }}>{s.year}º {semLabel(s.semester)}</span>}
                       {s.credits && <span style={{ fontSize: 11, color: D.muted }}>{s.credits} ECTS</span>}
@@ -2694,7 +3080,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   )}
                   {(showArchived || filterSubjStatus === "archived") && archivedVisible.map(s => (
                     <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 8, background: D.card, opacity: 0.6, marginBottom: 6, border: "1px solid " + D.border }}>
-                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: sc(s.color), flexShrink: 0 }} />
                       <span style={{ fontSize: 13, flex: 1, color: D.muted, textDecoration: "line-through" }}>{s.name}</span>
                       {s.year && <span style={{ fontSize: 11, color: D.muted }}>{s.year}º {semLabel(s.semester)}</span>}
                       <span style={{ fontSize: 10, color: D.muted, background: D.card2, padding: "2px 6px", borderRadius: 6 }}>📁 Archivada</span>
@@ -2743,16 +3129,18 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                       ))}
                     </div>
                   )}
-                  <button onClick={() => openNewTask()} style={{ marginLeft: "auto", padding: "8px 18px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 500 }}>+ Nueva</button>
+                  <button data-tour="new-task" onClick={() => openNewTask()} style={{ marginLeft: "auto", padding: "8px 18px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 500 }}>+ Nueva</button>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {filteredTasks.length === 0 && <Card><div style={{ textAlign: "center", color: D.muted, padding: "20px 0", fontSize: 13 }}>Sin actividades</div></Card>}
-                  {filteredTasks.map((t, idx) => {
+                  {shownTasks.map((t, idx) => {
                     const subj = subjects.find(s => s.id === t.subjectId), days = daysUntil(t.dueDate);
                     const tt   = TASK_TYPES.find(x => x.key === t.type);
+                    const parent = t.parentId ? tasks.find(x => x.id === t.parentId) : null;
+                    const nested = !!parent && shownTasks.some(x => x.id === parent.id);
                     // Separador cuando empieza el bloque de completadas (solo en vista "todos")
-                    const prevDone = idx > 0 && filteredTasks[idx - 1].status !== "completada";
-                    const showDivider = filterStatus === "all" && t.status === "completada" && prevDone;
+                    const prevDone = idx > 0 && shownTasks[idx - 1].status !== "completada";
+                    const showDivider = filterStatus === "all" && t.status === "completada" && prevDone && !nested;
                     return (
                       <React.Fragment key={t.id}>
                         {showDivider && (
@@ -2762,13 +3150,21 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                             <div style={{ flex: 1, height: 1, background: D.border }} />
                           </div>
                         )}
-                        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", background: D.card, borderRadius: 8, border: "1px solid " + D.border, borderLeft: "4px solid " + (subj?.color || "#888"), opacity: t.status === "completada" ? 0.55 : 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", marginLeft: nested ? 28 : 0, background: D.card, borderRadius: 8, border: "1px solid " + D.border, borderLeft: "4px solid " + (subj?.color || "#888"), opacity: t.status === "completada" ? 0.55 : 1 }}>
+                          {nested && <span style={{ color: D.muted, fontSize: 14, marginLeft: -4 }}>↳</span>}
                           <input type="checkbox" checked={t.status === "completada"} onChange={() => toggleStatus(t.id)} style={{ width: 16, height: 16, cursor: "pointer", accentColor: D.accent, flexShrink: 0 }} />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 3 }}>
                               <span style={{ fontSize: 13, fontWeight: 500, textDecoration: t.status === "completada" ? "line-through" : "none" }}>{t.title}</span>
                               <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: D.card2, color: D.muted }}>{tt?.label}</span>
-                              <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: D.card2, color: PRIORITY_COLOR[t.priority] }}>{t.priority}</span>
+                              <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: D.card2, color: PRIORITY_COLOR()[t.priority] }}>{t.priority}</span>
+                              {t.gradeMode === "none" && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: D.card2, color: D.muted }}>sin nota</span>}
+                              {(t.reminders || t.type === "recordatorio") && <span title="Tiene recordatorio" style={{ fontSize: 11 }}>🔔</span>}
+                              {parent && !nested && (
+                                <span onClick={() => openEditTask(parent)} title="Abrir la práctica"
+                                  style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: D.card2, color: D.accent, cursor: "pointer" }}>🔗 {parent.title}</span>
+                              )}
+                              {t.np && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: D.card2, color: D.red, fontWeight: 500 }}>NP</span>}
                               {t.grade !== null && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: D.card2, color: gradeColor(t.grade), fontWeight: 500 }}>{fmtGradeFull(t.grade)}{t.gradeMode === "points" ? (t.pts ? " · +" + t.pts + " pts" : "") : (t.pct ? " · " + t.pct + "%" : "")}</span>}
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11, color: D.muted, marginTop: 2 }}>
@@ -2784,7 +3180,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                                 </span>
                               </span>
                               <span style={{ color: D.border }}>·</span>
-                              <span style={{ color: STATUS_COLOR[t.status] }}>{t.status}</span>
+                              <span style={{ color: STATUS_COLOR()[t.status] }}>{t.status}</span>
                             </div>
                           </div>
                           <button onClick={() => openEditTask(t)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 14, padding: 4 }}>✎</button>
@@ -2795,6 +3191,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   })}
                 </div>
               </div>
+              <div style={{ display: "grid", gap: 16 }}>
               <Card>
                 <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
                   <span style={{ fontSize: 13, fontWeight: 500, color: D.muted }}>Asignaturas</span>
@@ -2805,7 +3202,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   {i > 0 && subjectGroupKey(activeSubjects[i - 1]) !== subjectGroupKey(s) &&
                     <div style={{ height: 3, borderRadius: 2, background: D.muted + "33", margin: "9px 0" }} />}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 8, background: D.card2, marginBottom: 5 }}>
-                    <div style={{ width: 9, height: 9, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+                    <div style={{ width: 9, height: 9, borderRadius: "50%", background: sc(s.color), flexShrink: 0 }} />
                     <span style={{ fontSize: 12, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
                     <button onClick={() => openEditSubj(s)}     style={{ background: "none", border: "none", cursor: "pointer", color: D.muted,  fontSize: 12, padding: "1px 4px" }}>✎</button>
                     <button onClick={() => toggleArchive(s.id)} style={{ background: "none", border: "none", cursor: "pointer", color: D.green, fontSize: 12, padding: "1px 4px" }}>✓</button>
@@ -2814,6 +3211,28 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   </React.Fragment>
                 ))}
               </Card>
+              {(() => {
+                // Completadas que cuentan para nota pero aún no la tienen
+                const sinNota = tasks.filter(t => t.status === "completada" && TASK_TYPES.find(x => x.key === t.type)?.hasGrade && t.gradeMode !== "none" && !t.np && !Number.isFinite(t.grade)).sort(byDueDate);
+                if (!sinNota.length) return null;
+                return (
+                  <Card>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: D.muted, marginBottom: 12 }}>Pendientes de nota ({sinNota.length})</div>
+                    {sinNota.map(t => {
+                      const subj = subjects.find(s => s.id === t.subjectId);
+                      return (
+                        <div key={t.id} onClick={() => openEditTask(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 8, background: D.card2, marginBottom: 5, cursor: "pointer" }}>
+                          <div style={{ width: 9, height: 9, borderRadius: "50%", background: sc(subj?.color || "#888"), flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+                          <span style={{ fontSize: 11, color: D.muted }}>{t.dueDate}</span>
+                          <span style={{ color: D.muted, fontSize: 12, padding: "1px 4px" }}>✎</span>
+                        </div>
+                      );
+                    })}
+                  </Card>
+                );
+              })()}
+              </div>
             </div>
           )}
 
@@ -2874,7 +3293,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
               return (
                 <div
                   onClick={() => setSelGradeSubj(isSelected ? null : rowKey)}
-                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8, background: isSelected ? s.color + "22" : D.card2, marginBottom: 5, borderLeft: "3px solid " + s.color, cursor: "pointer", transition: "background 0.15s" }}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8, background: isSelected ? s.color + "22" : D.card2, marginBottom: 5, borderLeft: "3px solid " + sc(s.color), cursor: "pointer", transition: "background 0.15s" }}
                 >
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{s.name}{s._splitSem ? <span style={{ fontSize: 10, color: D.muted, marginLeft: 5 }}>C{s._splitSem}</span> : null}</span>
                   {s.credits && <span style={{ fontSize: 11, color: D.muted, flexShrink: 0 }}>{s.credits} ECTS</span>}
@@ -2901,10 +3320,10 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
               const isManual = s.manualGrade !== null && s.manualGrade !== undefined;
 
               return (
-                <div style={{ margin: "0 0 10px 0", padding: "14px 16px", borderRadius: 8, background: D.card, border: "1px solid " + s.color + "66" }}>
+                <div style={{ margin: "0 0 10px 0", padding: "14px 16px", borderRadius: 8, background: D.card, border: "1px solid " + sc(s.color) + "66" }}>
                   {/* Header */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: sc(s.color), flexShrink: 0 }} />
                     <span style={{ fontWeight: 600, fontSize: 14, flex: 1 }}>{s.name}</span>
                     <button onClick={() => openEditSubj(s)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.muted, fontSize: 12, padding: "3px 10px" }}>✎ Editar</button>
                     <button onClick={() => openNewTask(s)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.accent, fontSize: 12, padding: "3px 10px" }}>+ Tarea</button>
@@ -2952,7 +3371,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
                         <div style={{ height: 4, borderRadius: 2, background: D.border, overflow: "hidden", marginTop: 4 }}>
-                          <div style={{ height: "100%", borderRadius: 2, background: s.color, width: t.pct + "%" }} />
+                          <div style={{ height: "100%", borderRadius: 2, background: sc(s.color), width: t.pct + "%" }} />
                         </div>
                       </div>
                       <span style={{ fontSize: 12, color: D.muted, flexShrink: 0 }}>{t.pct}%</span>
@@ -3151,7 +3570,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                         {[0, 2, 4, 6, 8, 10].map(g => <text key={g} x={PAD - 6} y={sy(g) + 3} fontSize="9" fill={D.muted} textAnchor="end">{g}</text>)}
                         <line x1={sx(0)} y1={sy(clamp(intercept))} x2={sx(maxCred)} y2={sy(clamp(slope * maxCred + intercept))} stroke={D.accent} strokeWidth="1.5" strokeDasharray="4 3" opacity="0.6" />
                         {withGrades.map(s => (
-                          <circle key={s.id} cx={sx(s.credits || 0)} cy={sy(s.g)} r="6" fill={s.color}
+                          <circle key={s.id} cx={sx(s.credits || 0)} cy={sy(s.g)} r="6" fill={sc(s.color)}
                             onMouseEnter={e => setChartTip({ x: e.clientX, y: e.clientY, name: s.name, grade: s.g })}
                             onMouseMove={e => setChartTip(t => t ? { ...t, x: e.clientX, y: e.clientY } : t)}
                             onMouseLeave={() => setChartTip(null)}
@@ -3182,9 +3601,9 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   <button onClick={() => moveCal(1)} style={{ background: D.card2, border: "1px solid " + D.border, borderRadius: 8, padding: "7px 14px", cursor: "pointer", color: D.text, fontSize: 16 }}>Mes siguiente ›</button>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-                  <MonthGrid year={calYear}  month={calMonth}  tasks={tasks} subjects={subjects} todayStr={todayStr} onEditTask={openEditTask} onAddReminder={openNewReminder} />
+                  <MonthGrid year={calYear}  month={calMonth}  tasks={tasks} subjects={subjects} todayStr={todayStr} onEditTask={openEditTask} onAddReminder={openNewReminder} linkHover={linkHover} setLinkHover={setLinkHover} />
                   {calendarView === "dual" && (
-                    <MonthGrid year={nextYear} month={nextMonth} tasks={tasks} subjects={subjects} todayStr={todayStr} onEditTask={openEditTask} onAddReminder={openNewReminder} />
+                    <MonthGrid year={nextYear} month={nextMonth} tasks={tasks} subjects={subjects} todayStr={todayStr} onEditTask={openEditTask} onAddReminder={openNewReminder} linkHover={linkHover} setLinkHover={setLinkHover} />
                   )}
                 </div>
               </Card>
@@ -3272,7 +3691,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                           const top = (toMin(slot.start) - DAY_START) / 60 * PX_HORA;
                           const h   = Math.max(26, (toMin(slot.end) - toMin(slot.start)) / 60 * PX_HORA);
                           const active = isNow(slot);
-                          const color = subj?.color || D.accent;
+                          const color = sc(subj?.color || D.accent);
                           return (
                             <div key={slot.id}
                               onClick={() => setEditSlot({ ...slot, subjectId: String(slot.subjectId) })}
@@ -3303,7 +3722,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr auto", gap: 8, alignItems: "end" }}>
                     <div>
                       <div style={{ fontSize: 11, color: D.muted, marginBottom: 4 }}>Día</div>
-                      <select value={scheduleForm.day} onChange={e => setScheduleForm(f => ({ ...f, day: e.target.value }))} style={inp}>
+                      <select value={scheduleForm.day} onChange={e => setScheduleForm(f => ({ ...f, day: e.target.value }))} style={inp()}>
                         {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
                       </select>
                     </div>
@@ -3317,7 +3736,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     </div>
                     <div>
                       <div style={{ fontSize: 11, color: D.muted, marginBottom: 4 }}>Asignatura</div>
-                      <select value={scheduleForm.subjectId} onChange={e => setScheduleForm(f => ({ ...f, subjectId: e.target.value }))} style={inp}>
+                      <select value={scheduleForm.subjectId} onChange={e => setScheduleForm(f => ({ ...f, subjectId: e.target.value }))} style={inp()}>
                         <option value="">Selecciona…</option>
                         {activeSubjects.map(s => <option key={s.id} value={s.id}>{s.acronym ? s.acronym + " — " : ""}{s.name}</option>)}
                       </select>
@@ -3371,7 +3790,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                         <span style={{ color: D.muted, flexShrink: 0 }}>{fmtTime(s.minutes)}</span>
                       </div>
                       <div style={{ height: 6, borderRadius: 4, background: D.card2, overflow: "hidden" }}>
-                        <div style={{ height: "100%", borderRadius: 4, background: s.color, width: (totalMinutes > 0 ? Math.round((s.minutes / totalMinutes) * 100) : 0) + "%", transition: "width 0.5s" }} />
+                        <div style={{ height: "100%", borderRadius: 4, background: sc(s.color), width: (totalMinutes > 0 ? Math.round((s.minutes / totalMinutes) * 100) : 0) + "%", transition: "width 0.5s" }} />
                       </div>
                     </div>
                   ))}
@@ -3398,7 +3817,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   <Card>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{historyDate}{historyDate === todayStr ? " — Hoy" : ""}</div>
-                      <button onClick={() => { const sid = selSubject ?? activeSubjects[0]?.id ?? ""; setManualForm({ ...emptyManual, date: historyDate, subjectId: sid, taskId: getDefaultTaskId(sid) }); setShowManualModal(true); }} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid " + D.border, background: D.card2, color: D.accent, cursor: "pointer", flexShrink: 0 }}>＋ Añadir sesión</button>
+                      <button onClick={() => openManual(historyDate, selSubject ?? activeSubjects[0]?.id ?? "", selTask)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid " + D.border, background: D.card2, color: D.accent, cursor: "pointer", flexShrink: 0 }}>＋ Añadir sesión</button>
                     </div>
                     {dayStats.total === 0
                       ? <div style={{ color: D.muted, fontSize: 13, padding: "12px 0", textAlign: "center" }}>Sin sesiones este día</div>
@@ -3408,14 +3827,14 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                         {dayStats.bySubj.map(s => (
                           <div key={s.name} style={{ marginBottom: 8 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 8, height: 8, borderRadius: "50%", background: s.color }} /><span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{s.name}</span></div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 8, height: 8, borderRadius: "50%", background: sc(s.color) }} /><span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{s.name}</span></div>
                               <div style={{ display: "flex", gap: 8, color: D.muted, fontSize: 11, flexShrink: 0 }}>
                                 <span>{fmtTime(s.minutes)}</span>
                                 <span style={{ color: D.accent, fontWeight: 500 }}>{Math.round((s.minutes / dayStats.total) * 100)}%</span>
                               </div>
                             </div>
                             <div style={{ height: 5, borderRadius: 3, background: D.card2, overflow: "hidden" }}>
-                              <div style={{ height: "100%", borderRadius: 4, background: s.color, width: Math.round((s.minutes / dayStats.total) * 100) + "%", transition: "width 0.5s" }} />
+                              <div style={{ height: "100%", borderRadius: 4, background: sc(s.color), width: Math.round((s.minutes / dayStats.total) * 100) + "%", transition: "width 0.5s" }} />
                             </div>
                           </div>
                         ))}
@@ -3426,7 +3845,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     <Card>
                       <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, color: D.muted }}>Sesiones del día</div>
                       {dayStats.sessions.map(s => (
-                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, borderLeft: "3px solid " + (subjects.find(x => x.id === s.subjectId)?.color || s.subjectColor), marginBottom: 5, background: D.card2 }}>
+                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, borderLeft: "3px solid " + sc((subjects.find(x => x.id === s.subjectId)?.color || s.subjectColor)), marginBottom: 5, background: D.card2 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.subjectName}</div>
                             {s.taskTitle && <div style={{ fontSize: 10, color: D.muted }}>{s.taskTitle}</div>}
@@ -3442,7 +3861,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
               </div>
               <Card style={{ marginTop: 22 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12, color: D.muted }}>Línea de tiempo</div>
-                <SessionTimeline sessions={filteredSessions} subjects={subjects} fmtTime={fmtTime} showEmptyDays={showEmptyDays} onEditSession={openEditSession} onDeleteSession={deleteSession} onAddSession={d => { const { subjectId, taskId } = getMostStudied(d); setManualForm({ ...emptyManual, date: d, subjectId, taskId }); setShowManualModal(true); }} />
+                <SessionTimeline sessions={filteredSessions} subjects={subjects} fmtTime={fmtTime} showEmptyDays={showEmptyDays} onEditSession={openEditSession} onDeleteSession={deleteSession} onAddSession={d => { const { subjectId, taskId } = getMostStudied(d); openManual(d, subjectId, taskId); }} />
               </Card>
             </div>
           )}
@@ -3453,6 +3872,16 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
             <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
 
               <Card>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>🧭 Tutorial</div>
+                    <div style={{ fontSize: 13, color: D.muted }}>Un recorrido rápido por todas las secciones.</div>
+                  </div>
+                  <button data-tour="tour-restart" onClick={() => setTourStep(0)} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 13, cursor: "pointer" }}>Ver tutorial</button>
+                </div>
+              </Card>
+
+              <Card data-tour="account">
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>👤 Cuenta</div>
                 <div style={{ fontSize: 13, color: D.muted, marginBottom: 14 }}>
                   {session
@@ -3512,10 +3941,10 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     </div>
                     <input type="email" placeholder="tu@email.com" value={authForm.email} autoComplete="username"
                       onChange={e => setAuthForm(f => ({ ...f, email: e.target.value }))}
-                      onKeyDown={e => e.key === "Enter" && handleAuth()} style={inp} />
+                      onKeyDown={e => e.key === "Enter" && handleAuth()} style={inp()} />
                     <input type="password" placeholder="Contraseña" value={authForm.password} autoComplete="current-password"
                       onChange={e => setAuthForm(f => ({ ...f, password: e.target.value }))}
-                      onKeyDown={e => e.key === "Enter" && handleAuth()} style={inp} />
+                      onKeyDown={e => e.key === "Enter" && handleAuth()} style={inp()} />
                     {authError && <div style={{ fontSize: 12, color: D.red, padding: "7px 10px", borderRadius: 6, background: D.red + "11" }}>{authError}</div>}
                     {authInfo  && <div style={{ fontSize: 12, color: D.green, padding: "7px 10px", borderRadius: 6, background: D.green + "11" }}>{authInfo}</div>}
                     <button onClick={handleAuth} disabled={authBusy || !authForm.email || !authForm.password}
@@ -3534,12 +3963,12 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     const isActive = p.id === activeProgramId;
                     return (
                       <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8, background: D.card2, border: "2px solid " + (isActive ? p.color : D.border) }}>
-                        <div style={{ width: 10, height: 10, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+                        <div style={{ width: 10, height: 10, borderRadius: "50%", background: sc(p.color), flexShrink: 0 }} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
                           <div style={{ fontSize: 11, color: D.muted }}>{p.type === "career" ? "Grado" : "Máster"} · {p.years} año{p.years !== 1 ? "s" : ""} · {p.semestersPerYear} cuatrimestre{p.semestersPerYear !== 1 ? "s" : ""}/año</div>
                         </div>
-                        {isActive && <span style={{ fontSize: 11, color: p.color, background: p.color + "22", padding: "2px 8px", borderRadius: 6 }}>Activo</span>}
+                        {isActive && <span style={{ fontSize: 11, color: sc(p.color), background: p.color + "22", padding: "2px 8px", borderRadius: 6 }}>Activo</span>}
                         {!isActive && <button onClick={() => setAppState(prev => ({ ...prev, activeProgram: p.id }))} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid " + D.border, background: D.card, color: D.text, cursor: "pointer" }}>Cambiar</button>}
                         <button onClick={() => { setEditingProgId(p.id); setEditProgForm({ name: p.name, type: p.type, years: p.years, semestersPerYear: p.semestersPerYear, color: p.color }); }} style={{ fontSize: 13, padding: "4px 8px", borderRadius: 6, border: "none", background: "none", color: D.muted, cursor: "pointer" }} title="Editar">✎</button>
                         {/* Borrado lógico, como todo lo demás: quitarlo del array
@@ -3555,7 +3984,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   ? <button onClick={() => setAddingProg(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "1px dashed " + D.border, background: "none", color: D.muted, fontSize: 13, cursor: "pointer", width: "100%" }}>+ Añadir programa</button>
                   : <div style={{ padding: 14, borderRadius: 8, background: D.card2, border: "1px solid " + D.border, display: "flex", flexDirection: "column", gap: 10 }}>
                       <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>Nuevo programa</div>
-                      <input placeholder="Nombre (ej: Máster en Ingeniería)" value={newProg.name} onChange={e => setNewProg(f => ({ ...f, name: e.target.value }))} style={inp} />
+                      <input placeholder="Nombre (ej: Máster en Ingeniería)" value={newProg.name} onChange={e => setNewProg(f => ({ ...f, name: e.target.value }))} style={inp()} />
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                         <div>
                           <div style={{ fontSize: 11, color: D.muted, marginBottom: 4 }}>Tipo</div>
@@ -3583,7 +4012,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {COLORS.map(c => <div key={c} onClick={() => setNewProg(f => ({ ...f, color: c }))} style={{ width: 22, height: 22, borderRadius: "50%", background: c, cursor: "pointer", border: newProg.color === c ? "3px solid " + D.text : "3px solid transparent" }} />)}
+                        <ColorPick value={newProg.color} onChange={c => setNewProg(f => ({ ...f, color: c }))} />
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={() => { setAddingProg(false); setNewProg({ name: "", type: "career", years: 4, semestersPerYear: 2, color: "#378ADD" }); }} style={{ ...btnBase, flex: 1, border: "1px solid " + D.border, background: D.card, color: D.text }}>Cancelar</button>
@@ -3603,8 +4032,8 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div>
                     <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Fondo</div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      {[["dark","Oscuro"],["darker","Más oscuro"],["navy","Azul noche"],["gray","Gris"]].map(([v,l]) => (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {[["dark","Oscuro"],["darker","Más oscuro"],["navy","Azul noche"],["gray","Gris"],["light","Claro"]].map(([v,l]) => (
                         <button key={v} onClick={() => setBgTheme(v)} style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1px solid "+(bgTheme===v?D.accent:D.border), background:bgTheme===v?D.accent+"22":D.card2, color:bgTheme===v?D.accent:D.muted, fontSize:12, cursor:"pointer", fontWeight:bgTheme===v?600:400 }}>{l}</button>
                       ))}
                     </div>
@@ -3778,7 +4207,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   Seleccionar archivo
                   <input type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
                 </label>
-                {importSuccess && <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "#0a2e1e", border: "1px solid " + D.green + "44", color: D.green, fontSize: 13 }}>✓ Datos importados correctamente.</div>}
+                {importSuccess && <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: D.green + "22", border: "1px solid " + D.green + "44", color: D.green, fontSize: 13 }}>✓ Datos importados correctamente.</div>}
                 {importError  && <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: D.red + "11", border: "1px solid " + D.red + "44", color: D.red, fontSize: 13 }}>✕ {importError}</div>}
               </Card>
               <Card>
@@ -3796,7 +4225,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 </div>
                 {icsMsg && (
                   <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, fontSize: 13,
-                                background: icsMsg.startsWith("✓") ? "#0a2e1e" : D.red + "11",
+                                background: icsMsg.startsWith("✓") ? D.green + "22" : D.red + "11",
                                 border: "1px solid " + (icsMsg.startsWith("✓") ? D.green + "44" : D.red + "44"),
                                 color: icsMsg.startsWith("✓") ? D.green : D.red }}>{icsMsg}</div>
                 )}
@@ -3827,7 +4256,8 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
 
       {showTaskModal && (
         <TaskModal editTaskId={editTaskId} taskForm={taskForm} setTaskForm={setTaskForm}
-          activeSubjects={activeSubjects} onSave={saveTask} onClose={() => setShowTaskModal(false)} />
+          activeSubjects={activeSubjects} tasks={tasks} onSave={saveTask} onClose={() => setShowTaskModal(false)}
+          onAddChild={addChildDelivery} onOpenTask={t => { saveTask(); openEditTask(t); }} />
       )}
 
       {showSettings && (
@@ -3860,13 +4290,13 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 18 }}>
             <div>
               <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Asignatura</div>
-              <select value={editSlot.subjectId} onChange={e => setEditSlot(f => ({ ...f, subjectId: e.target.value }))} style={inp}>
+              <select value={editSlot.subjectId} onChange={e => setEditSlot(f => ({ ...f, subjectId: e.target.value }))} style={inp()}>
                 {subjects.map(s => <option key={s.id} value={s.id}>{s.acronym ? s.acronym + " — " : ""}{s.name}</option>)}
               </select>
             </div>
             <div>
               <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Día</div>
-              <select value={editSlot.day} onChange={e => setEditSlot(f => ({ ...f, day: e.target.value }))} style={inp}>
+              <select value={editSlot.day} onChange={e => setEditSlot(f => ({ ...f, day: e.target.value }))} style={inp()}>
                 {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
@@ -3897,11 +4327,11 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
             <div>
               <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Nombre</div>
-              <input placeholder="Ej: Cálculo I" value={subjForm.name} onChange={e => setSubjForm(f => ({ ...f, name: e.target.value }))} style={inp} />
+              <input placeholder="Ej: Cálculo I" value={subjForm.name} onChange={e => setSubjForm(f => ({ ...f, name: e.target.value }))} style={inp()} />
             </div>
             <div>
               <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Siglas <span style={{ fontSize: 10 }}>(para el horario, ej: MCM)</span></div>
-              <input placeholder="Ej: MCM" maxLength={6} value={subjForm.acronym || ""} onChange={e => setSubjForm(f => ({ ...f, acronym: e.target.value.toUpperCase() }))} style={inp} />
+              <input placeholder="Ej: MCM" maxLength={6} value={subjForm.acronym || ""} onChange={e => setSubjForm(f => ({ ...f, acronym: e.target.value.toUpperCase() }))} style={inp()} />
             </div>
 
             {/* Curso y cuatrimestre como toggles */}
@@ -3949,13 +4379,13 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
             {/* Créditos */}
             <div>
               <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Créditos ECTS <span style={{ color: D.border }}>(opcional)</span></div>
-              <input type="number" min="1" max="30" placeholder="Ej: 6" value={subjForm.credits ?? ""} onChange={e => setSubjForm(f => ({ ...f, credits: parseNum(e.target.value, { min: 0, max: 100 }) }))} style={{ ...inp, width: "100%" }} />
+              <input type="number" min="1" max="30" placeholder="Ej: 6" value={subjForm.credits ?? ""} onChange={e => setSubjForm(f => ({ ...f, credits: parseNum(e.target.value, { min: 0, max: 100 }) }))} style={{ ...inp(), width: "100%" }} />
             </div>
           </div>
 
           <div style={{ fontSize: 12, color: D.muted, marginBottom: 8 }}>Color</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
-            {COLORS.map(c => <div key={c} onClick={() => setSubjForm(f => ({ ...f, color: c }))} style={{ width: 30, height: 30, borderRadius: "50%", background: c, cursor: "pointer", border: subjForm.color === c ? "3px solid " + D.text : "3px solid transparent" }} />)}
+            <ColorPick value={subjForm.color} onChange={c => setSubjForm(f => ({ ...f, color: c }))} />
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
             <button onClick={() => setShowSubjModal(false)} style={{ ...btnBase, border: "1px solid " + D.border, background: D.card2, color: D.text }}>Cancelar</button>
@@ -3983,7 +4413,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
               <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Asignatura</div>
               <select
                 value={manualForm.subjectId}
-                onChange={e => setManualForm(f => ({ ...f, subjectId: e.target.value, taskId: getDefaultTaskId(e.target.value) }))}
+                onChange={e => setManualForm(f => ({ ...f, subjectId: e.target.value, taskId: pickManualTask(e.target.value, f.date, null) }))}
                 style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: manualForm.subjectId ? D.text : D.muted, fontSize: 13, cursor: "pointer" }}
               >
                 <option value="" disabled>Selecciona una asignatura…</option>
@@ -3993,6 +4423,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 {programSubjects.filter(s => (s.approved || s.archived) && String(s.id) === String(manualForm.subjectId)).map(s => (
                   <option key={s.id} value={s.id}>{s.name} {s.approved ? "(aprobada)" : "(archivada)"}</option>
                 ))}
+                {(manualTasksFor(NO_SUBJ, manualForm.date).length > 0 || manualForm.subjectId === NO_SUBJ) && <option value={NO_SUBJ}>Sin asignatura</option>}
               </select>
             </div>
             <div>
@@ -4004,11 +4435,8 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 13, cursor: manualForm.subjectId ? "pointer" : "not-allowed", opacity: manualForm.subjectId ? 1 : 0.5 }}
               >
                 <option value="">— Sin tarea —</option>
-                {pendingTasks(tasks, String(manualForm.subjectId)).map(t => (
-                  <option key={t.id} value={t.id}>{t.title}</option>
-                ))}
-                {tasks.filter(t => t.status === "completada" && String(t.id) === String(manualForm.taskId)).map(t => (
-                  <option key={t.id} value={t.id}>{t.title} (completada)</option>
+                {manualTasksFor(manualForm.subjectId, manualForm.date).map(t => (
+                  <option key={t.id} value={t.id}>{t.title}{t.status === "completada" ? " (completada)" : ""}</option>
                 ))}
               </select>
             </div>
@@ -4024,7 +4452,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
               </div>
               <div>
                 <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Fecha</div>
-                <DatePicker value={manualForm.date} onChange={v => setManualForm(f => ({ ...f, date: v }))} />
+                <DatePicker value={manualForm.date} onChange={v => setManualForm(f => ({ ...f, date: v, taskId: pickManualTask(f.subjectId, v, f.taskId) }))} />
               </div>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
@@ -4032,17 +4460,18 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
               <button
                 disabled={!manualForm.subjectId || !manualForm.minutes || Number(manualForm.minutes) < 1}
                 onClick={() => {
-                  const subj = subjects.find(s => s.id === String(manualForm.subjectId));
-                  if (!subj) return;
+                  const loose = manualForm.subjectId === NO_SUBJ;
+                  const subj = loose ? null : subjects.find(s => s.id === String(manualForm.subjectId));
+                  if (!subj && !loose) return;
                   const task = manualForm.taskId ? tasks.find(t => t.id === String(manualForm.taskId)) : null;
                   const mins = parseNum(manualForm.minutes, { min: 1, max: 480 });
                   if (mins === null) return;
                   setSessions(prev => [...prev, touch({
                     id: newId(),
                     date: manualForm.date || today(),
-                    subjectId: subj.id,
-                    subjectName: subj.name,
-                    subjectColor: subj.color,
+                    subjectId: subj?.id ?? null,
+                    subjectName: subj?.name ?? "Sin asignatura",
+                    subjectColor: subj?.color ?? "#888",
                     taskTitle: task?.title || null,
                     minutes: mins,
                     manual: true,
@@ -4068,7 +4497,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div>
               <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Nombre</div>
-              <input value={editProgForm.name} onChange={e => setEditProgForm(f => ({ ...f, name: e.target.value }))} style={inp} />
+              <input value={editProgForm.name} onChange={e => setEditProgForm(f => ({ ...f, name: e.target.value }))} style={inp()} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
@@ -4091,7 +4520,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
             <div>
               <div style={{ fontSize: 12, color: D.muted, marginBottom: 8 }}>Color del programa</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {COLORS.map(c => <div key={c} onClick={() => setEditProgForm(f => ({ ...f, color: c }))} style={{ width: 26, height: 26, borderRadius: "50%", background: c, cursor: "pointer", border: editProgForm.color === c ? "3px solid " + D.text : "3px solid transparent" }} />)}
+                <ColorPick value={editProgForm.color} onChange={c => setEditProgForm(f => ({ ...f, color: c }))} />
               </div>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
