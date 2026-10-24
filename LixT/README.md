@@ -1,7 +1,12 @@
-# Tauri + React
+# LixT — escritorio
 
-This template should help get you started developing with Tauri and React in Vite.
+App de escritorio de LixT: React + Vite dentro de Tauri 2.
 
-## Recommended IDE Setup
+```bash
+npm install
+npm run tauri dev      # desarrollo
+npm run check          # archivos compartidos + ESLint + tests
+npm run tauri build    # instalador
+```
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+Toda la documentación del proyecto está en el [README principal](../README.md).
