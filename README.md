@@ -8,7 +8,7 @@
 Escritorio y móvil, sincronizados entre sí.
 
 [![CI](https://github.com/JorgeZzz16/LixDEV/actions/workflows/ci.yml/badge.svg)](https://github.com/JorgeZzz16/LixDEV/actions/workflows/ci.yml)
-![Versión](https://img.shields.io/badge/versión-1.4.5-378ADD)
+![Versión](https://img.shields.io/badge/versión-1.5.0-378ADD)
 ![Windows](https://img.shields.io/badge/Windows-Tauri_2-24C8DB?logo=tauri&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-Expo-000020?logo=expo&logoColor=white)
 ![Supabase](https://img.shields.io/badge/sync-Supabase-3ECF8E?logo=supabase&logoColor=white)
@@ -56,7 +56,10 @@ npm install
 npm run tauri dev      # app con recarga en caliente
 npm run check          # archivos compartidos + ESLint + tests
 npm run tauri build    # instalador en src-tauri/target/release/bundle/
+npm run portable       # instalador + .zip portable en bundle/portable/
 ```
+
+La versión portable guarda los datos en la carpeta `LixT-datos` que va junto a `LixT.exe`, así que se puede llevar en un USB. Sin esa carpeta, LixT guarda en `%LOCALAPPDATA%` como la versión instalada.
 
 **Móvil**
 
@@ -78,4 +81,4 @@ Los conflictos se resuelven por `updated_at` (gana el más reciente) y los borra
 
 ---
 
-<div align="center"><sub>Hecho por Jorge, 4º de Ingeniería Aeroespacial (UPM).</sub></div>
+<div align="center"><sub>Hecho por Jorge, 4º de Ingeniería Aeroespacial (UPM). Todos los derechos reservados.</sub></div>

@@ -1,5 +1,21 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Modo portable: si junto al .exe hay una carpeta `LixT-datos`, todo lo que la
+/// app guarda (el almacenamiento de WebView2, donde viven los datos) va ahí en
+/// vez de a %LOCALAPPDATA%. Así el .exe y sus datos viajan juntos en un USB.
+/// La versión instalada no trae esa carpeta y sigue como siempre (además, en
+/// Archivos de programa no se podría escribir).
+fn carpeta_portable() -> Option<PathBuf> {
+    let dir = std::env::current_exe().ok()?.parent()?.join("LixT-datos");
+    dir.is_dir().then_some(dir)
+}
+
+/// Para enseñarlo en Ajustes: la carpeta de datos si es la versión portable.
+#[tauri::command]
+fn modo_portable() -> Option<String> {
+    carpeta_portable().map(|d| d.to_string_lossy().into_owned())
+}
 
 /// Escribe un backup en la carpeta que el usuario eligió y deja solo los
 /// `conservar` más recientes.
@@ -55,7 +71,20 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![guardar_backup])
+        .invoke_handler(tauri::generate_handler![guardar_backup, modo_portable])
+        // La ventana se crea aquí (en la config lleva `create: false`) porque la
+        // carpeta de datos de WebView2 solo se puede elegir al construirla.
+        .setup(|app| {
+            let conf = app.config().app.windows.iter()
+                .find(|w| w.label == "main").cloned()
+                .expect("falta la ventana main en tauri.conf.json");
+            let mut ventana = tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?;
+            if let Some(dir) = carpeta_portable() {
+                ventana = ventana.data_directory(dir);
+            }
+            ventana.build()?;
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

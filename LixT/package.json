@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "lint": "eslint src scripts",
     "test": "node --test",
-    "check": "node scripts/check-shared.mjs && eslint src scripts && node --test"
+    "check": "node scripts/check-shared.mjs && eslint src scripts && node --test",
+    "portable": "tauri build && node scripts/portable.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.6",

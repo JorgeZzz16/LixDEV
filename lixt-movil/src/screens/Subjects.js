@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert } from "react-native";
-import { newId, touch, softDelete, daysUntil, calcFinalGrade, subjectMedal, fmtTime, fmtGrade, byDueDate, bySubjectOrder, subjectGroupKey } from "../logic";
+import { newId, touch, softDelete, daysUntil, calcFinalGrade, subjectMedal, fmtTime, fmtGrade, byDueDate, bySubjectOrder, subjectGroupKey, isCurrentForSubject } from "../logic";
 import { STATUS_COLOR } from "../constants";
 import { D, sc, gradeColor } from "../theme";
 import SubjectModal from "./SubjectModal";
@@ -188,7 +188,8 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
 
 // ─── Tarjeta expandible de asignatura en curso ──────────────────────────────────
 function SubjectCard({ subj, data, expanded, onToggle, onEdit, onApprove, onArchive, onDelete, onNewTask, onEditTask }) {
-  const subjTasks = data.tasks.filter(t => t.subjectId === subj.id).sort(byDueDate);
+  // En una asignatura repetida, lo de cursos anteriores ya no sale aquí
+  const subjTasks = data.tasks.filter(t => t.subjectId === subj.id && isCurrentForSubject(t, subj)).sort(byDueDate);
   const totalMins = data.sessions.filter(s => s.subjectId === subj.id).reduce((a, s) => a + s.minutes, 0);
   const { finalGrade } = calcFinalGrade(data.tasks, data.subjects, subj.id);
   const medal = subjectMedal(finalGrade, subj.approved);

@@ -24,9 +24,9 @@ import { supabase } from "./supabase.js";
 
 const FIELD_MAP = {
   programs: { semestersPerYear: "semesters_per_year" },
-  subjects: { programId: "program_id", manualGrade: "manual_grade" },
+  subjects: { programId: "program_id", manualGrade: "manual_grade", repeatFrom: "repeat_from", keepGrades: "keep_grades" },
   tasks:    { programId: "program_id", subjectId: "subject_id", dueDate: "due_date", gradeMode: "grade_mode", parentId: "parent_id" },
-  sessions: { programId: "program_id", subjectId: "subject_id", subjectName: "subject_name", subjectColor: "subject_color", taskTitle: "task_title" },
+  sessions: { programId: "program_id", subjectId: "subject_id", subjectName: "subject_name", subjectColor: "subject_color", taskTitle: "task_title", taskId: "task_id" },
   schedule: { programId: "program_id", subjectId: "subject_id", start: "start_time", end: "end_time" },
 };
 
@@ -34,9 +34,9 @@ const FIELD_MAP = {
 // añade un campo nuevo y la columna no existe, el INSERT entero fallaría.
 const COLUMNS = {
   programs: ["id", "name", "type", "years", "semesters_per_year", "color", "updated_at", "deleted_at"],
-  subjects: ["id", "program_id", "name", "acronym", "color", "course", "year", "semester", "credits", "approved", "archived", "annual", "manual_grade", "updated_at", "deleted_at"],
+  subjects: ["id", "program_id", "name", "acronym", "color", "course", "year", "semester", "credits", "approved", "archived", "annual", "manual_grade", "repeat_from", "keep_grades", "updated_at", "deleted_at"],
   tasks:    ["id", "program_id", "subject_id", "title", "due_date", "hour", "type", "status", "priority", "grade", "grade_mode", "pct", "pts", "np", "reminders", "parent_id", "updated_at", "deleted_at"],
-  sessions: ["id", "program_id", "subject_id", "subject_name", "subject_color", "task_title", "date", "minutes", "manual", "updated_at", "deleted_at"],
+  sessions: ["id", "program_id", "subject_id", "subject_name", "subject_color", "task_title", "task_id", "date", "minutes", "manual", "updated_at", "deleted_at"],
   schedule: ["id", "program_id", "subject_id", "day", "start_time", "end_time", "course", "updated_at", "deleted_at"],
 };
 

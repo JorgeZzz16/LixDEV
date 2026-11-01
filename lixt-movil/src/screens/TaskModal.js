@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Modal, View, Text, Pressable, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, useWindowDimensions } from "react-native";
+import { Modal, View, Text, Pressable, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, useWindowDimensions, Alert } from "react-native";
 import { TASK_TYPES } from "../constants";
 import { DateField, TimeField } from "./DateTimeField";
 import { today, soloNumero, parseNum, pad, byDueDate, REMINDER_PRESETS, DEFAULT_REMINDERS, reminderTimes } from "../logic";
@@ -260,7 +260,10 @@ export default function TaskModal({ visible, task, tasks, subjects, subjectId, i
             {/* Acciones fijas: siempre a la vista, haya o no más formulario */}
             <View style={{ flexDirection: "row", gap: 10, padding: 14, borderTopWidth: 1, borderTopColor: D.border, backgroundColor: D.card }}>
               {task && (
-                <TouchableOpacity onPress={() => onDelete(task.id)} style={botonPeligro()}>
+                <TouchableOpacity style={botonPeligro()} onPress={() => Alert.alert("Eliminar tarea", `¿Eliminar «${task.title}»? No se puede deshacer.`, [
+                  { text: "Cancelar", style: "cancel" },
+                  { text: "Eliminar", style: "destructive", onPress: () => onDelete(task.id) },
+                ])}>
                   <Text style={{ color: D.red, fontSize: 14 }}>Eliminar</Text>
                 </TouchableOpacity>
               )}

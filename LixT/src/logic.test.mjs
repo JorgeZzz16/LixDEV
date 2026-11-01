@@ -9,6 +9,7 @@ import {
   soloNumero, parseNum, byDueDate, pendingTasks, today, pad, parseDate, fmtDate,
   academicCourseOf, startOfWeek, endOfWeek, studyStreak, paraFondo, contraste, tasksOnDate,
   reminderTimes, dueReminders, nestChildren, migrateTaskType,
+  linkSessionTasks, sessionOfTask, isCurrentForSubject, calcFinalGrade as cfg, mostStudied,
 } from "./logic.js";
 
 const subj = { id: "s1", name: "Cálculo", manualGrade: null };
@@ -285,6 +286,40 @@ assert.ok(contraste(paraFondo("#AFE313", true, "#f6f7fa"), "#f6f7fa") >= 4);
   assert.deepEqual(nestChildren(l).map(t => t.id), ["x", "p1", "e1", "e2"]);
   assert.equal(migrateTaskType({ type: "trabajo" }).type, "tarea");
   assert.equal(migrateTaskType({ type: "examen" }).type, "examen");
+}
+
+// Asignatura repetida: lo anterior a repeatFrom no cuenta salvo keepGrades
+{
+  const tks = [
+    { id: "v", subjectId: "1", dueDate: "2026-01-20", grade: 2, pct: 100, gradeMode: "pct" },
+    { id: "n", subjectId: "1", dueDate: "2027-01-20", grade: 8, pct: 100, gradeMode: "pct" },
+  ];
+  const subj = { id: "1", repeatFrom: "2026-09-01" };
+  assert.equal(cfg(tks, [subj], "1").finalGrade, 8);
+  assert.equal(cfg(tks, [{ ...subj, keepGrades: true }], "1").finalGrade, 5);
+  assert.equal(cfg(tks, [{ id: "1" }], "1").finalGrade, 5);
+  assert.equal(isCurrentForSubject(tks[0], subj), false);
+  assert.equal(isCurrentForSubject(tks[1], subj), true);
+}
+
+// Sesiones enlazadas por id: dos tareas con el mismo nombre en cursos distintos
+{
+  const tks = [
+    { id: "a25", subjectId: "1", title: "PEI 1", dueDate: "2025-11-10" },
+    { id: "a26", subjectId: "1", title: "PEI 1", dueDate: "2026-11-10" },
+  ];
+  const ses = [
+    { id: "s1", subjectId: "1", taskTitle: "PEI 1", date: "2025-11-01", minutes: 30 },
+    { id: "s2", subjectId: "1", taskTitle: "PEI 1", date: "2026-10-30", minutes: 45 },
+    { id: "s3", subjectId: "1", taskTitle: "PEI 1", taskId: "a26", date: "2026-10-31", minutes: 10 },
+  ];
+  const linked = linkSessionTasks(ses, tks);
+  assert.deepEqual(linked.map(s => s.taskId), ["a25", "a26", "a26"]);
+  assert.equal(linkSessionTasks(linked, tks), null);
+  const mins = t => linked.filter(s => sessionOfTask(s, t)).reduce((a, s) => a + s.minutes, 0);
+  assert.equal(mins(tks[0]), 30);
+  assert.equal(mins(tks[1]), 55);
+  assert.equal(mostStudied(linked, tks, "2026-10-30").taskId, "a26");
 }
 
 console.log("logic.js OK");

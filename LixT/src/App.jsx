@@ -20,7 +20,7 @@ import {
   calcFinalGrade as calcGradeOf, stdDev, linearRegression,
   pendingTasks, tasksOnDate, defaultTaskId, mostStudied, fmtGrade, fmtGradeFull,
   byDueDate, parseNum, studyStreak,
-  migrateTaskType, nestChildren, REMINDER_PRESETS, DEFAULT_REMINDERS, reminderTimes, dueReminders,
+  migrateTaskType, nestChildren, isCurrentForSubject, sessionOfTask, linkSessionTasks, REMINDER_PRESETS, DEFAULT_REMINDERS, reminderTimes, dueReminders,
   tasksToIcs, parseIcs, icsToTasks,
 } from "./logic.js";
 
@@ -636,6 +636,46 @@ function RangoHoras({ value, onChange }) {
   );
 }
 
+// ─── Barra de título propia ────────────────────────────────────────────────────
+//
+// La ventana va sin la barra de Windows (`decorations: false`): la cabecera de
+// la app hace de barra (se arrastra con `data-tauri-drag-region`, doble clic
+// maximiza) y aquí van los tres botones. En el navegador (vite a pelo) no hay
+// ventana de Tauri, así que no se pintan.
+const EN_TAURI = typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
+
+function WindowControls() {
+  const [max, setMax] = useState(false);
+  const [hover, setHover] = useState(null);
+  useEffect(() => {
+    if (!EN_TAURI) return;
+    const w = getCurrentWindow();
+    let off;
+    w.isMaximized().then(setMax).catch(() => {});
+    w.onResized(() => w.isMaximized().then(setMax).catch(() => {})).then(f => { off = f; });
+    return () => off?.();
+  }, []);
+  if (!EN_TAURI) return null;
+  const w = getCurrentWindow();
+  const btn = (k, title, onClick, path) => (
+    <button key={k} title={title} aria-label={title} onClick={onClick}
+      onMouseEnter={() => setHover(k)} onMouseLeave={() => setHover(null)}
+      style={{ width: 46, alignSelf: "stretch", border: "none", cursor: "default", display: "grid", placeItems: "center",
+        background: hover === k ? (k === "close" ? "#E81123" : D.card2) : "transparent",
+        color: hover === k && k === "close" ? "#fff" : D.muted, transition: "background .12s" }}>
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1">{path}</svg>
+    </button>
+  );
+  return (
+    <div style={{ display: "flex", alignSelf: "stretch", marginLeft: 8 }}>
+      {btn("min", "Minimizar", () => w.minimize(), <path d="M0 5.5h10" />)}
+      {btn("max", max ? "Restaurar" : "Maximizar", () => w.toggleMaximize(),
+        max ? <><path d="M2.5 2.5V.5h7v7h-2" /><rect x=".5" y="2.5" width="7" height="7" /></> : <rect x=".5" y=".5" width="9" height="9" />)}
+      {btn("close", "Cerrar", () => w.close(), <path d="M0 0l10 10M10 0L0 10" />)}
+    </div>
+  );
+}
+
 // ─── Modal ─────────────────────────────────────────────────────────────────────
 
 function Modal({ onClose, children }) {
@@ -770,7 +810,7 @@ function ReminderEditor({ taskForm, setTaskForm }) {
 
 // ─── TaskModal ─────────────────────────────────────────────────────────────────
 
-function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, tasks, onSave, onClose, onAddChild, onOpenTask }) {
+function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, tasks, onSave, onClose, onAddChild, onOpenTask, onDelete }) {
   const tt = TASK_TYPES.find(t => t.key === taskForm.type) || TASK_TYPES[0];
   const gradeMode = taskForm.gradeMode || "pct";
   // El examen siempre lleva nota; entregas y prácticas pueden ir sin ella
@@ -921,6 +961,9 @@ function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, tasks, o
           : <ReminderEditor taskForm={taskForm} setTaskForm={setTaskForm} />}
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+        {editTaskId && (
+          <button onClick={onDelete} style={{ ...btnBase, flex: "0 0 auto", padding: "0 16px", border: "1px solid " + D.red + "55", background: D.red + "11", color: D.red }}>Eliminar</button>
+        )}
         <button onClick={onClose} style={{ ...btnBase, border: "1px solid " + D.border, background: D.card2, color: D.text }}>Cancelar</button>
         <button onClick={onSave}  style={{ ...btnBase, border: "none", background: D.accent, color: "#fff", fontWeight: 500 }}>Guardar</button>
       </div>
@@ -931,20 +974,24 @@ function TaskModal({ editTaskId, taskForm, setTaskForm, activeSubjects, tasks, o
 // ─── SessionModal ──────────────────────────────────────────────────────────────
 
 function SessionModal({ editSession, setEditSession, subjects, tasks, onSave, onClose }) {
-  const subjTasks = useMemo(
-    () => editSession?.subjectId ? pendingTasks(tasks, editSession.subjectId) : [],
-    [tasks, editSession?.subjectId]
-  );
+  // Las tareas que había ese día (como en la sesión manual), más la suya aunque no encaje
+  const subjTasks = useMemo(() => {
+    if (!editSession?.subjectId) return [];
+    const list = tasksOnDate(tasks, editSession.subjectId, editSession.date || today());
+    const own = tasks.find(t => t.id === editSession.taskId);
+    return own && !list.includes(own) ? [own, ...list] : list;
+  }, [tasks, editSession?.subjectId, editSession?.date, editSession?.taskId]);
 
   function handleSubjectChange(subjId) {
     const subj = subjects.find(s => s.id === subjId);
-    const newTasks = pendingTasks(tasks, subjId);
+    const first = tasksOnDate(tasks, subjId, editSession?.date || today())[0];
     setEditSession(es => es ? ({
       ...es,
       subjectId: subjId,
       subjectName: subj?.name || "Sin asignatura",
       subjectColor: subj?.color || "#888",
-      taskTitle: newTasks[0]?.title || null,
+      taskId: first?.id || null,
+      taskTitle: first?.title || null,
     }) : es);
   }
 
@@ -952,7 +999,7 @@ function SessionModal({ editSession, setEditSession, subjects, tasks, onSave, on
 
   const subjOptions = [...subjects].sort(bySubjectOrder).map(s => ({ value: s.id, label: s.name + (s.course ? " (" + s.course + ")" : "") }));
   const taskOptions = subjTasks.map(t => ({
-    value: t.title,
+    value: t.id,
     label: t.title + " · " + (daysUntil(t.dueDate) === 0 ? "Hoy" : daysUntil(t.dueDate) < 0 ? "Vencida" : daysUntil(t.dueDate) + "d"),
   }));
 
@@ -971,8 +1018,8 @@ function SessionModal({ editSession, setEditSession, subjects, tasks, onSave, on
         <div>
           <div style={{ fontSize: 12, color: D.muted, marginBottom: 5 }}>Tarea</div>
           <CustomSelect
-            value={editSession.taskTitle ?? taskOptions[0]?.value}
-            onChange={v => setEditSession(es => es ? ({ ...es, taskTitle: v }) : es)}
+            value={editSession.taskId ?? taskOptions[0]?.value}
+            onChange={v => setEditSession(es => es ? ({ ...es, taskId: v, taskTitle: tasks.find(t => t.id === v)?.title || null }) : es)}
             options={taskOptions}
             disabled={taskOptions.length === 0}
             disabledLabel="Sin tareas pendientes"
@@ -1002,8 +1049,9 @@ function SessionModal({ editSession, setEditSession, subjects, tasks, onSave, on
 
 // ─── SubjectCard ───────────────────────────────────────────────────────────────
 
-function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNewTask, onEditTask, onEditSubj, onArchive, onApprove, onDelete }) {
-  const subjTasks   = tasks.filter(t => t.subjectId === subj.id).sort(byDueDate);
+function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNewTask, onEditTask, onEditSubj, onArchive, onApprove, onDelete, onRepeat, onUndoRepeat }) {
+  // En una asignatura repetida, lo de cursos anteriores ya no sale aquí
+  const subjTasks   = tasks.filter(t => t.subjectId === subj.id && isCurrentForSubject(t, subj)).sort(byDueDate);
   const totalMins   = sessions.filter(s => s.subjectId === subj.id).reduce((a, s) => a + s.minutes, 0);
   // El cálculo vive en logic.js. Antes se repetía aquí a mano y esa copia no
   // miraba `manualGrade`, así que esta tarjeta y la pestaña Notas enseñaban
@@ -1022,6 +1070,13 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
         <div style={{ width: 12, height: 12, borderRadius: "50%", background: sc(subj.color), flexShrink: 0 }} />
         <span style={{ fontSize: 15, fontWeight: 600, flex: 1, cursor: "pointer" }} onClick={onToggleCollapse}>
           {subj.name}
+          {subj.repeatFrom && (
+            <span onClick={e => { e.stopPropagation(); if (window.confirm("¿Deshacer la repetición? Vuelven a verse y a contar las tareas de cursos anteriores.")) onUndoRepeat(subj.id); }}
+              title={(subj.keepGrades ? "Conserva las notas anteriores" : "Solo cuentan las notas desde " + subj.repeatFrom) + " · pulsa para deshacer"}
+              style={{ fontSize: 10, fontWeight: 500, color: D.amber, background: D.amber + "22", padding: "2px 6px", borderRadius: 6, marginLeft: 7, cursor: "pointer" }}>
+              ↻ repite{subj.keepGrades ? "" : " · de cero"}
+            </span>
+          )}
           {subj.year    ? <span style={{ fontSize: 11, fontWeight: 400, color: D.muted, marginLeft: 7 }}>{subj.year}º</span> : null}
           {(() => {
             const sems = Array.isArray(subj.semester) ? subj.semester : (subj.semester ? [subj.semester] : []);
@@ -1050,6 +1105,7 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
         )}
         <button onClick={() => onNewTask(subj)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.accent, fontSize: 12, padding: "3px 10px", flexShrink: 0 }}>+ Tarea</button>
         <button onClick={() => onEditSubj(subj)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 14, padding: "2px 5px" }} title="Editar">✎</button>
+        <button onClick={() => onRepeat(subj)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.amber, fontSize: 12, padding: "3px 8px", flexShrink: 0 }} title="Repetir en el curso actual (suspensa)">↻</button>
         <button onClick={() => onApprove(subj.id)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.green, fontSize: 12, padding: "3px 8px", flexShrink: 0 }} title="Marcar como aprobada">✓</button>
         <button onClick={() => onArchive(subj.id)} style={{ background: "none", border: "1px solid " + D.border, borderRadius: 6, cursor: "pointer", color: D.muted, fontSize: 12, padding: "3px 8px", flexShrink: 0 }} title="Archivar (ocultar)">📁</button>
         <button onClick={() => onDelete(subj.id)} style={{ background: "none", border: "none", cursor: "pointer", color: D.red, fontSize: 14, padding: "2px 5px" }} title="Eliminar">✕</button>
@@ -1063,7 +1119,7 @@ function SubjectCard({ subj, tasks, sessions, collapsed, onToggleCollapse, onNew
             {subjTasks.map(t => {
               const days = daysUntil(t.dueDate);
               const tt   = TASK_TYPES.find(x => x.key === t.type);
-              const taskMins = sessions.filter(s => s.subjectId === subj.id && s.taskTitle === t.title).reduce((a, s) => a + s.minutes, 0);
+              const taskMins = sessions.filter(s => sessionOfTask(s, t)).reduce((a, s) => a + s.minutes, 0);
               return (
                 <div key={t.id} onClick={() => onEditTask(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: D.card2, marginBottom: 5, cursor: "pointer", borderLeft: "3px solid " + sc(subj.color) }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1767,7 +1823,11 @@ function LixtMain({ appState, setAppState }) {
 
   const [filterSubj,    setFilterSubj]    = useState("all");
   const [filterStatus,  setFilterStatus]  = useState("all");
-  const [filterTaskCourse, setFilterTaskCourse] = useState(() => ls("lixt_tasks_course", null)); // null = todos
+  // Al abrir, el curso actual (si tiene tareas); null = todos
+  const [filterTaskCourse, setFilterTaskCourse] = useState(() => {
+    const cur = academicCourseOf(today());
+    return (activePData.tasks || []).some(t => t.dueDate && academicCourseOf(t.dueDate) === cur) ? cur : null;
+  });
   // Siempre se entra en el curso académico actual. El periodo elegido NO se
   // recuerda entre sesiones a propósito: lo normal es querer ver el curso en
   // marcha, no el "Global" que dejaste puesto una vez.
@@ -1842,6 +1902,9 @@ function LixtMain({ appState, setAppState }) {
   // después de un return solo se ejecuta en algunos renders, y React revienta
   // en cuanto el número de hooks cambia entre uno y otro.
   const [backupDir,    setBackupDir]    = useState(() => ls("lixt_backup_dir", null));
+  // Carpeta de datos si es la versión portable (null en la instalada o en el navegador)
+  const [portableDir, setPortableDir] = useState(null);
+  useEffect(() => { if (EN_TAURI) invoke("modo_portable").then(setPortableDir).catch(() => {}); }, []);
   const [backupMsg,    setBackupMsg]    = useState("");
 
   // El nombre lleva fecha y hora, así que ordenar por nombre es ordenar por
@@ -2045,7 +2108,6 @@ function LixtMain({ appState, setAppState }) {
   useEffect(() => lsSet("lixt_timeline_course", timelineCourse), [timelineCourse]);
   useEffect(() => lsSet("lixt_schedule_start", scheduleStart), [scheduleStart]);
   useEffect(() => lsSet("lixt_schedule_end",   scheduleEnd),   [scheduleEnd]);
-  useEffect(() => lsSet("lixt_tasks_course", filterTaskCourse), [filterTaskCourse]);
   useEffect(() => { const i = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(i); }, []);
 
   // Recupera la sesión guardada al arrancar y escucha login/logout
@@ -2101,14 +2163,30 @@ function LixtMain({ appState, setAppState }) {
     return () => document.removeEventListener("visibilitychange", onHide);
   }, [session, autoSync, appState, durations, longEvery, passingGrade]);
 
+  // Cada minuto con la app abierta. Sin red no se intenta: fallaría en silencio
+  // de todas formas, pero así no se gasta nada.
+  const handleSyncRef = useRef(null);
+  useEffect(() => {
+    if (!session || !autoSync) return;
+    const id = setInterval(() => { if (navigator.onLine) handleSyncRef.current?.({ silent: true }); }, 60000);
+    return () => clearInterval(id);
+  }, [session, autoSync]);
+
+  const appStateRef = useRef(appState);
+  appStateRef.current = appState;
+
   async function handleSync({ silent = false } = {}) {
     if (syncingRef.current) return;           // evita solaparse consigo mismo
     syncingRef.current = true;
     if (!silent) { setSyncBusy(true); setSyncErr(""); setSyncMsg(""); }
     try {
       const settings = { durations, longEvery, passingGrade, gradeScale, gradeIcons, bgTheme, examCount, showEmptyDays };
-      const { state, pushed, pulled, remoteSettings } = await syncAll(appState, settings);
-      setAppState(state);
+      const enviado = appState;
+      const { state, pushed, pulled, remoteSettings } = await syncAll(enviado, settings);
+      // Si has cambiado algo mientras viajaba la petición, el resultado ya está
+      // viejo: aplicarlo borraría ese cambio. Lo que haya llegado del servidor
+      // entra en la siguiente sincronización (como mucho, un minuto).
+      if (appStateRef.current === enviado) setAppState(state);
       // Los ajustes remotos solo se aplican si esta máquina no tenía ninguno
       if (remoteSettings && !lastSync) {
         if (remoteSettings.durations)    setDurations(remoteSettings.durations);
@@ -2131,6 +2209,8 @@ function LixtMain({ appState, setAppState }) {
       if (!silent) setSyncBusy(false);
     }
   }
+
+  handleSyncRef.current = handleSync;
 
   async function handleSignOut() {
     if (!window.confirm("¿Cerrar sesión? Tus datos locales no se borran.")) return;
@@ -2191,33 +2271,48 @@ function LixtMain({ appState, setAppState }) {
     }
   }, [longEvery, durations, timerSound, timerNotif]);
 
+  // La sesión de trabajo en curso tiene un id desde el primer minuto: el mismo
+  // que llevará al terminarla, para que el borrador y la definitiva no se dupliquen.
+  const draftIdRef = useRef(null);
   const makeSession = useCallback((mins) => {
     const subj = subjects.find(s => s.id === selSubject);
     const task = tasks.find(tk => tk.id === selTask);
-    return touch({ id: newId(), date: today(), subjectId: selSubject === NO_SUBJ ? null : selSubject, subjectName: subj?.name || "Sin asignatura", subjectColor: subj?.color || "#888", taskTitle: task?.title || null, minutes: mins });
+    return touch({ id: draftIdRef.current || newId(), date: today(), subjectId: selSubject === NO_SUBJ ? null : selSubject, subjectName: subj?.name || "Sin asignatura", subjectColor: subj?.color || "#888", taskTitle: task?.title || null, taskId: task?.id || null, minutes: mins });
   }, [subjects, tasks, selSubject, selTask]);
+  const makeSessionRef = useRef(makeSession);
+  makeSessionRef.current = makeSession;
 
-  // Si cierras la app con el timer de trabajo corriendo, guarda ese tiempo como sesión
+  // Borrador de la sesión en curso. Se reescribe en cada minuto cumplido, así que
+  // un apagado de golpe (sin cerrar la app) pierde como mucho un minuto. Al volver
+  // a abrir, el borrador se recupera como sesión.
+  const DRAFT_KEY = "lixt_session_draft";
+  const clearDraft = () => { draftIdRef.current = null; try { localStorage.removeItem(DRAFT_KEY); } catch {} };
+  const writeDraft = left => {
+    if (modeRef.current !== "work") return;
+    const mins = Math.round((durSec.work - left) / 60);
+    if (mins < 1) return;
+    draftIdRef.current ||= newId();
+    const prev = ls(DRAFT_KEY, null);
+    if (prev?.minutes === mins && prev?.id === draftIdRef.current) return;
+    lsSet(DRAFT_KEY, { ...makeSessionRef.current(mins), programId: activeProgramId });
+  };
   useEffect(() => {
-    const saveOnClose = () => {
-      try {
-        if (!running || modeRef.current !== "work") return;
-        const mins = Math.round((durSec.work - timeLeftRef.current) / 60);
-        if (mins < 1) return;
-        const cur = JSON.parse(localStorage.getItem("lixt_v2") || "null");
-        const pd = cur?.programData?.[cur.activeProgram];
-        if (pd) { pd.sessions = [...(pd.sessions || []), makeSession(mins)]; localStorage.setItem("lixt_v2", JSON.stringify(cur)); }
-      } catch {}
-    };
-    window.addEventListener("beforeunload", saveOnClose);
-    return () => window.removeEventListener("beforeunload", saveOnClose);
-  }, [running, makeSession, durSec.work]);
+    const d = ls(DRAFT_KEY, null);
+    if (!d) return;
+    clearDraft();
+    if (d.programId !== activeProgramId || !(d.minutes >= 1)) return;
+    const ses = { ...d };
+    delete ses.programId;
+    setSessions(prev => prev.some(x => x.id === ses.id) ? prev : [...prev, ses]);
+  }, []);
 
   const finishSession = useCallback((finishedMode) => {
     let nwc = workCount;
     if (finishedMode === "work") {
       const mins = Math.max(1, Math.round((durSec.work - timeLeftRef.current) / 60) || durations.work);
-      setSessions(prev => [...prev, makeSession(mins)]);
+      const ses = makeSession(mins);
+      setSessions(prev => [...prev.filter(x => x.id !== ses.id), ses]);
+      clearDraft();
       nwc = workCount + 1; setWorkCount(nwc);
     }
     advanceMode(finishedMode, nwc);
@@ -2230,6 +2325,7 @@ function LixtMain({ appState, setAppState }) {
     intervalRef.current = setInterval(() => {
       const newLeft = Math.max(0, saved - Math.floor((Date.now() - startTsRef.current) / 1000));
       setTimeLeft(newLeft); timeLeftRef.current = newLeft;
+      writeDraft(newLeft);
       if (newLeft <= 0) { clearInterval(intervalRef.current); setRunning(false); finishSession(modeRef.current); }
     }, 500);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
@@ -2237,14 +2333,14 @@ function LixtMain({ appState, setAppState }) {
 
   function switchMode(m) {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    setRunning(false); setMode(m);
+    setRunning(false); setMode(m); clearDraft();
     const t = durSec[m]; setTimeLeft(t); timeLeftRef.current = t;
   }
 
   function saveTimerSettings() {
     setDurations({ ...tempDur }); setLongEvery(tempLongEvery);
     const t = tempDur[mode] * 60; setTimeLeft(t); timeLeftRef.current = t;
-    setRunning(false); if (intervalRef.current) clearInterval(intervalRef.current);
+    setRunning(false); clearDraft(); if (intervalRef.current) clearInterval(intervalRef.current);
     setShowSettings(false);
   }
 
@@ -2254,11 +2350,14 @@ function LixtMain({ appState, setAppState }) {
     const elapsed = durSec[mode] - timeLeftRef.current;
     if (mode === "work" && elapsed > 10) {
       const mins = Math.max(1, Math.round(elapsed / 60));
-      setSessions(prev => [...prev, makeSession(mins)]);
+      const ses = makeSession(mins);
+      setSessions(prev => [...prev.filter(x => x.id !== ses.id), ses]);
+      clearDraft();
       const nwc = workCount + 1; setWorkCount(nwc); advanceMode("work", nwc);
     } else if (mode !== "work") {
       advanceMode(mode, workCount);
     } else {
+      clearDraft();
       const t = durSec[mode]; setTimeLeft(t); timeLeftRef.current = t;
     }
   }
@@ -2289,6 +2388,14 @@ function LixtMain({ appState, setAppState }) {
     const id = setInterval(() => check(false), 30000);
     return () => clearInterval(id);
   }, []);
+
+  // Las sesiones de antes guardaban la tarea solo por título: se les pone su id
+  // (una vez; después `linkSessionTasks` no cambia nada y no se vuelve a guardar)
+  // Con función de actualización: así no pisa otro cambio de sesiones que llegue
+  // en la misma pasada (p. ej. la sesión recuperada del borrador al arrancar).
+  useEffect(() => {
+    if (linkSessionTasks(sessions, tasks)) setSessions(prev => linkSessionTasks(prev, tasks) || prev);
+  }, [sessions, tasks]);
 
   // "Trabajo" ya no es un tipo: lo que llegue así (datos viejos, otro dispositivo
   // sin actualizar) pasa a entrega.
@@ -2352,7 +2459,13 @@ function LixtMain({ appState, setAppState }) {
       title: "Entrega · " + parent.title });
     setShowTaskModal(true);
   }
-  function deleteTask(id)   { if (!window.confirm("¿Eliminar esta tarea?")) return; setTasks(prev => prev.map(t => t.id === id ? softDelete(t) : t)); }
+  // Devuelve si se ha borrado (el formulario se cierra solo en ese caso)
+  function deleteTask(id) {
+    const t = tasks.find(x => x.id === id);
+    if (!window.confirm(`¿Eliminar «${t?.title || "esta tarea"}»? No se puede deshacer.`)) return false;
+    setTasks(prev => prev.map(x => x.id === id ? softDelete(x) : x));
+    return true;
+  }
   function toggleStatus(id) { setTasks(prev => prev.map(t => t.id === id ? touch({ ...t, status: t.status === "completada" ? "pendiente" : "completada" }) : t)); }
   function openNewSubj()    { setEditSubjId(null); setSubjForm({ name: "", color: COLORS[0], course: "", year: null, semester: null, annual: false, credits: null, acronym: "" }); setShowSubjModal(true); }
   function openEditSubj(s)  {
@@ -2374,6 +2487,15 @@ function LixtMain({ appState, setAppState }) {
     else setSubjects(prev => [...prev, touch({ id: newId(), ...subjForm, archived: false, approved: false, programId: activeProgramId })]);
     setShowSubjModal(false);
   }
+  // Asignatura suspensa que se repite este curso: vuelve a estar activa, lo de
+  // antes deja de verse en ella y, si no se conservan, sus notas dejan de contar.
+  const [repeatSubj, setRepeatSubj] = useState(null);
+  function repeatSubject(id, keepGrades) {
+    const desde = courseRange(academicCourseOf(today()))[0];
+    setSubjects(prev => prev.map(s => s.id === id ? touch({ ...s, repeatFrom: desde, keepGrades, archived: false, approved: false, manualGrade: keepGrades ? s.manualGrade : null }) : s));
+    setRepeatSubj(null);
+  }
+  function undoRepeat(id) { setSubjects(prev => prev.map(s => s.id === id ? touch({ ...s, repeatFrom: null, keepGrades: null }) : s)); }
   function toggleArchive(id) { setSubjects(prev => prev.map(s => s.id === id ? touch({ ...s, archived: !s.archived, approved: false }) : s)); }
   function toggleApprove(id) { setSubjects(prev => prev.map(s => s.id === id ? touch({ ...s, approved: !s.approved, archived: false }) : s)); }
   // Borrado en cascada: sin esto las tareas, sesiones y clases de la asignatura
@@ -2398,10 +2520,10 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
   }
 
   function openEditSession(s) {
-    const subjTasks = pendingTasks(tasks, s.subjectId);
-    const taskStillExists = subjTasks.some(t => t.title === s.taskTitle);
-    const resolvedTask = taskStillExists ? s.taskTitle : (subjTasks[0]?.title || null);
-    setEditSession({ ...s, taskTitle: resolvedTask });
+    // Las antiguas no tienen taskId: se busca su tarea por título y fecha
+    const own = s.taskId ? tasks.find(t => t.id === s.taskId) : (linkSessionTasks([s], tasks)?.[0] && tasks.find(t => t.id === linkSessionTasks([s], tasks)[0].taskId));
+    const first = own || tasksOnDate(tasks, s.subjectId, s.date || today())[0];
+    setEditSession({ ...s, taskId: first?.id || null, taskTitle: first?.title || null });
     setShowSessionModal(true);
   }
   function saveSession() {
@@ -2779,11 +2901,11 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
 
       {/* ── Sidebar ── */}
       <div style={{ width: 220, background: D.sidebar, borderRight: "1px solid " + D.border, display: "flex", flexDirection: "column", flexShrink: 0 }}>
-        <div style={{ padding: "22px 20px 14px", borderBottom: "1px solid " + D.border }}>
-          <div style={{ fontSize: 26, fontWeight: 800, color: D.accent, letterSpacing: "-1px" }}>
-            LixT <span style={{ fontSize: 11, fontWeight: 400, color: D.muted, letterSpacing: 0 }}>v1.4.5</span>
+        <div data-tauri-drag-region style={{ padding: "22px 20px 14px", borderBottom: "1px solid " + D.border, userSelect: "none" }}>
+          <div data-tauri-drag-region style={{ fontSize: 26, fontWeight: 800, color: D.accent, letterSpacing: "-1px" }}>
+            LixT <span data-tauri-drag-region style={{ fontSize: 11, fontWeight: 400, color: D.muted, letterSpacing: 0 }}>v1.5.0</span>
           </div>
-          <div style={{ fontSize: 11, color: D.muted, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div data-tauri-drag-region style={{ fontSize: 11, color: D.muted, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {activeProgram?.name || "Mi programa"}
           </div>
         </div>
@@ -2821,17 +2943,21 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
 
       {/* ── Contenido ── */}
       <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column" }}>
-        <div style={{ background: D.card, borderBottom: "1px solid " + D.border, padding: "11px 28px", display: "flex", alignItems: "center", flexShrink: 0 }}>
-          <div style={{ fontSize: 16, fontWeight: 500 }}>{NAV.find(n => n.k === tab)?.label ?? ""}</div>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
+        {/* Cabecera y barra de título a la vez: fija arriba y arrastrable. El
+            atributo va también en los textos porque Tauri solo arrastra desde el
+            elemento exacto que lo lleva, no desde sus hijos. */}
+        <div data-tauri-drag-region style={{ position: "sticky", top: 0, zIndex: 50, background: D.card, borderBottom: "1px solid " + D.border, padding: EN_TAURI ? "0 0 0 28px" : "0 28px", minHeight: 46, display: "flex", alignItems: "center", flexShrink: 0, userSelect: "none" }}>
+          <div data-tauri-drag-region style={{ fontSize: 16, fontWeight: 500 }}>{NAV.find(n => n.k === tab)?.label ?? ""}</div>
+          <div data-tauri-drag-region style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, alignSelf: "stretch" }}>
             {tab === "grades" && (
               <button onClick={exportGradesPdf} disabled={pdfLoading} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, border: "1px solid " + D.border, background: pdfLoading ? D.card2 : D.card2, color: pdfLoading ? D.muted : D.accent, fontSize: 12, cursor: pdfLoading ? "not-allowed" : "pointer", fontWeight: 500 }}>
                 {pdfLoading ? "⏳ Generando…" : "📄 Exportar PDF"}
               </button>
             )}
-            <span style={{ fontSize: 13, color: D.muted }}>
+            <span data-tauri-drag-region style={{ fontSize: 13, color: D.muted }}>
               {new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
             </span>
+            <WindowControls />
           </div>
         </div>
 
@@ -2879,15 +3005,14 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 </div>
                 <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 10 }}>
                   <button onClick={() => {
-                    setRunning(r => {
-                      const starting = !r;
-                      if (starting && selTask && mode === "work") {
-                        setTasks(prev => prev.map(t => t.id === selTask && t.status === "pendiente" ? touch({ ...t, status: "en progreso" }) : t));
-                      }
-                      return !r;
-                    });
+                    // Fuera del actualizador de `running`: llamar a setTasks desde
+                    // dentro es un setState durante el render (aviso de React)
+                    if (!running && selTask && mode === "work") {
+                      setTasks(prev => prev.map(t => t.id === selTask && t.status === "pendiente" ? touch({ ...t, status: "en progreso" }) : t));
+                    }
+                    setRunning(r => !r);
                   }} style={{ padding: "11px 40px", borderRadius: 8, border: "none", background: running ? D.red : subjColor, color: "#fff", fontWeight: 600, fontSize: 16, cursor: "pointer" }}>{running ? "Pausar" : "Iniciar"}</button>
-                  <button onClick={() => { setRunning(false); const t = durSec[mode]; setTimeLeft(t); timeLeftRef.current = t; setWorkCount(0); }} style={{ padding: "11px 16px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 18, cursor: "pointer" }}>↺</button>
+                  <button onClick={() => { setRunning(false); clearDraft(); const t = durSec[mode]; setTimeLeft(t); timeLeftRef.current = t; setWorkCount(0); }} style={{ padding: "11px 16px", borderRadius: 8, border: "1px solid " + D.border, background: D.card2, color: D.text, fontSize: 18, cursor: "pointer" }}>↺</button>
                 </div>
                 {(running || (timeLeft < durSec[mode] && timeLeft > 0)) && (
                   <div style={{ display: "flex", justifyContent: "center" }}>
@@ -3042,7 +3167,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                   <SubjectCard subj={subj} tasks={tasks} sessions={sessions}
                     collapsed={collapsedSubjects.has(subj.id)}
                     onToggleCollapse={() => toggleCollapse(subj.id)}
-                    onNewTask={openNewTask} onEditTask={openEditTask}
+                    onNewTask={openNewTask} onEditTask={openEditTask} onRepeat={setRepeatSubj} onUndoRepeat={undoRepeat}
                     onEditSubj={openEditSubj} onArchive={toggleArchive} onApprove={toggleApprove} onDelete={deleteSubject} />
                 </React.Fragment>
               ))}
@@ -3085,6 +3210,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                       {s.year && <span style={{ fontSize: 11, color: D.muted }}>{s.year}º {semLabel(s.semester)}</span>}
                       <span style={{ fontSize: 10, color: D.muted, background: D.card2, padding: "2px 6px", borderRadius: 6 }}>📁 Archivada</span>
                       <button onClick={() => openEditSubj(s)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 13, padding: "2px 5px" }}>✎</button>
+                      <button onClick={() => setRepeatSubj(s)} style={{ background: "none", border: "none", cursor: "pointer", color: D.amber, fontSize: 12, padding: "2px 5px" }}>↻ Repetir</button>
                       <button onClick={() => toggleArchive(s.id)} style={{ background: "none", border: "none", cursor: "pointer", color: D.muted, fontSize: 12, padding: "2px 5px" }}>↩ Restaurar</button>
                       <button onClick={() => deleteSubject(s.id)} style={{ background: "none", border: "none", cursor: "pointer", color: D.red, fontSize: 13, padding: "2px 5px" }}>✕</button>
                     </div>
@@ -3920,7 +4046,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                       <input type="checkbox" checked={autoSync} onChange={e => setAutoSync(e.target.checked)} style={{ accentColor: D.accent, width: 15, height: 15, cursor: "pointer" }} />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 12, fontWeight: 500 }}>Sincronizar automáticamente</div>
-                        <div style={{ fontSize: 11, color: D.muted }}>Al abrir la app y al cerrarla o minimizarla</div>
+                        <div style={{ fontSize: 11, color: D.muted }}>Al abrir la app, cada minuto y al cerrarla o minimizarla</div>
                       </div>
                     </label>
 
@@ -4156,6 +4282,11 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                 </div>
               </Card>
               <Card>
+                {portableDir && (
+                  <div style={{ fontSize: 12, color: D.muted, padding: "8px 12px", borderRadius: 8, background: D.card2, marginBottom: 14 }}>
+                    🔌 Versión portable: tus datos están en <span style={{ color: D.text }}>{portableDir}</span>, junto al programa.
+                  </div>
+                )}
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>📤 Exportar datos</div>
                 <div style={{ fontSize: 13, color: D.muted, marginBottom: 16 }}>Descarga una copia de seguridad de todos tus datos en formato JSON.</div>
                 <button onClick={() => setShowExportConfirm(true)} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Descargar backup</button>
@@ -4254,10 +4385,32 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
 
       {/* ─── Modales ──────────────────────────────────────────────────────────────── */}
 
+      {repeatSubj && (
+        <Modal onClose={() => setRepeatSubj(null)}>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>↻ Repetir «{repeatSubj.name}»</div>
+          <div style={{ fontSize: 13, color: D.muted, lineHeight: 1.5, marginBottom: 18 }}>
+            Vuelve a estar activa en el curso {academicCourseLabel(academicCourseOf(today()))}. Las tareas de cursos anteriores dejan de verse en ella
+            (siguen en Tareas, en su curso). ¿Qué hacemos con sus notas?
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button onClick={() => repeatSubject(repeatSubj.id, true)} style={{ ...btnBase, flex: "none", textAlign: "left", padding: "12px 14px", border: "1px solid " + D.border, background: D.card2, color: D.text }}>
+              <div style={{ fontWeight: 500 }}>Conservar las notas</div>
+              <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>Lo aprobado el año pasado sigue contando en la nota final</div>
+            </button>
+            <button onClick={() => repeatSubject(repeatSubj.id, false)} style={{ ...btnBase, flex: "none", textAlign: "left", padding: "12px 14px", border: "1px solid " + D.border, background: D.card2, color: D.text }}>
+              <div style={{ fontWeight: 500 }}>Empezar de cero</div>
+              <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>Solo cuentan las notas de este curso</div>
+            </button>
+            <button onClick={() => setRepeatSubj(null)} style={{ ...btnBase, flex: "none", border: "none", background: "none", color: D.muted }}>Cancelar</button>
+          </div>
+        </Modal>
+      )}
+
       {showTaskModal && (
         <TaskModal editTaskId={editTaskId} taskForm={taskForm} setTaskForm={setTaskForm}
           activeSubjects={activeSubjects} tasks={tasks} onSave={saveTask} onClose={() => setShowTaskModal(false)}
-          onAddChild={addChildDelivery} onOpenTask={t => { saveTask(); openEditTask(t); }} />
+          onAddChild={addChildDelivery} onOpenTask={t => { saveTask(); openEditTask(t); }}
+          onDelete={() => { if (deleteTask(editTaskId)) setShowTaskModal(false); }} />
       )}
 
       {showSettings && (
@@ -4473,6 +4626,7 @@ Se borrarán también ${arrastra.join(", ")}.` : "";
                     subjectName: subj?.name ?? "Sin asignatura",
                     subjectColor: subj?.color ?? "#888",
                     taskTitle: task?.title || null,
+                    taskId: task?.id || null,
                     minutes: mins,
                     manual: true,
                     programId: activeProgramId,

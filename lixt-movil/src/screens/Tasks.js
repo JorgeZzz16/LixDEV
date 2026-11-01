@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { newId, touch, softDelete, daysUntil, fmtGradeFull, academicCourseOf, academicCourseLabel, byDueDate, bySubjectOrder, subjectGroupKey, nestChildren } from "../logic";
+import { newId, touch, softDelete, daysUntil, fmtGradeFull, academicCourseOf, academicCourseLabel, byDueDate, bySubjectOrder, subjectGroupKey, nestChildren, today } from "../logic";
 import { TASK_TYPES, PRIORITY_COLOR } from "../constants";
 import { D, sc, gradeColor } from "../theme";
 import TaskModal from "./TaskModal";
@@ -9,7 +9,11 @@ import TaskModal from "./TaskModal";
 export default function Tasks({ data, sync, syncing, mutate }) {
   const [filterSubj, setFilterSubj]     = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [filterCourse, setFilterCourse] = useState(null); // año de inicio del curso, o null = todos
+  // Año de inicio del curso, o null = todos. Al abrir, el actual si tiene tareas.
+  const [filterCourse, setFilterCourse] = useState(() => {
+    const cur = academicCourseOf(today());
+    return data.tasks.some(t => t.dueDate && academicCourseOf(t.dueDate) === cur) ? cur : null;
+  });
   const [editingTask, setEditingTask]   = useState(undefined); // undefined=cerrado, null=nueva
   const [taskSubjId, setTaskSubjId]     = useState(null);
 

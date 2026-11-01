@@ -124,7 +124,7 @@ export default function App() {
       {/* Cabecera */}
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: D.border }}>
         <Text style={{ color: D.text, fontSize: 17, fontWeight: "700", flex: 1 }}>
-          LixT <Text style={{ color: D.muted, fontSize: 11, fontWeight: "400" }}>v1.4.5</Text>
+          LixT <Text style={{ color: D.muted, fontSize: 11, fontWeight: "400" }}>v1.5.0</Text>
         </Text>
         {store.syncing && <ActivityIndicator color={D.muted} size="small" style={{ marginRight: 14 }} />}
         <Racha sessions={store.data.sessions} />

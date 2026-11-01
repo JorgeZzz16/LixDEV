@@ -31,3 +31,6 @@ Thumbs.db
 # Permisos locales de Claude Code: rutas de esta maquina, no del proyecto.
 # launch.json si va al repo: dice como arrancar el servidor del PC para probarlo.
 .claude/settings.local.json
+
+# Scripts personales que no son de LixT
+mitv-debloat/

@@ -352,7 +352,8 @@ export function subjectMedal(g, approved) {
 // Devuelve el desglose completo para poder mostrarlo en la interfaz.
 export function calcFinalGrade(tasks, subjects, subjId) {
   const subj        = (subjects || []).find(x => x.id === subjId);
-  const subjTasks   = (tasks || []).filter(t => t.subjectId === subjId);
+  // Si la asignatura se repite "empezando de cero", lo de cursos anteriores no cuenta
+  const subjTasks   = (tasks || []).filter(t => t.subjectId === subjId && (subj?.keepGrades || isCurrentForSubject(t, subj)));
   // `Number.isFinite` en vez de `!== null`: además de los null descarta NaN e
   // Infinity. Un NaN llegaba hasta `baseGrade || 0` (NaN es falsy) y salía
   // convertido en un 0 indistinguible de una nota real.
@@ -406,6 +407,40 @@ export const pendingTasks = (tasks, subjId) =>
     .filter(t => t.subjectId === subjId && t.status !== "completada")
     .sort(byDueDate);
 
+// ─── Asignaturas repetidas ─────────────────────────────────────────────────────
+//
+// Una asignatura suspensa que se repite guarda `repeatFrom` (inicio del curso en
+// que se repite, "AAAA-MM-DD") y `keepGrades`. Las tareas anteriores a esa fecha
+// dejan de verse en la asignatura; sus notas solo cuentan si `keepGrades`.
+export const isCurrentForSubject = (t, subj) => !(subj?.repeatFrom && t?.dueDate && t.dueDate < subj.repeatFrom);
+
+// ─── Sesiones ↔ tareas ─────────────────────────────────────────────────────────
+//
+// Las sesiones nuevas guardan `taskId`. Las antiguas solo tenían `taskTitle`, y
+// dos tareas con el mismo nombre (la del año pasado y la de este) se repartían
+// el tiempo. Sin `taskId` se sigue comparando por título y asignatura.
+export const sessionOfTask = (s, t) => s?.taskId ? s.taskId === t?.id : (!!s?.taskTitle && s.subjectId === t?.subjectId && s.taskTitle === t?.title);
+
+// Pone `taskId` a las sesiones antiguas que se pueden asignar sin dudas razonables:
+// entre tareas con mismo título y asignatura, la que se entregaba ese día o
+// después (la más próxima); si ninguna, la última anterior. Devuelve null si no
+// cambia nada.
+export function linkSessionTasks(sessions, tasks) {
+  let changed = false;
+  const out = (sessions || []).map(s => {
+    if (s.taskId || !s.taskTitle) return s;
+    const cands = (tasks || []).filter(t => t.subjectId === s.subjectId && t.title === s.taskTitle);
+    if (!cands.length) return s;
+    const after  = cands.filter(t => t.dueDate && t.dueDate >= s.date).sort(byDueDate);
+    const before = cands.filter(t => !t.dueDate || t.dueDate < s.date).sort(byDueDate);
+    const pick = cands.length === 1 ? cands[0] : after[0] || before[before.length - 1];
+    if (!pick) return s;
+    changed = true;
+    return touch({ ...s, taskId: pick.id });
+  });
+  return changed ? out : null;
+}
+
 // Tareas que seguían abiertas en `date`: las que se entregaban ese día o después
 // (o no tienen fecha), estén ya completadas o no. No se guarda cuándo se
 // completó cada tarea, así que la fecha de entrega es la mejor aproximación.
@@ -438,13 +473,16 @@ export function mostStudied(sessions, tasks, date) {
   for (const s of daySessions) bySubject[s.subjectId] = (bySubject[s.subjectId] || 0) + s.minutes;
   const subjectId = Object.keys(bySubject).sort((a, b) => bySubject[b] - bySubject[a])[0];
 
+  // Por id si la sesión lo tiene; las antiguas, por título
   const byTask = {};
   for (const s of daySessions) {
-    if (String(s.subjectId) === subjectId && s.taskTitle)
-      byTask[s.taskTitle] = (byTask[s.taskTitle] || 0) + s.minutes;
+    const key = s.taskId ? "id:" + s.taskId : s.taskTitle ? "t:" + s.taskTitle : null;
+    if (String(s.subjectId) === subjectId && key) byTask[key] = (byTask[key] || 0) + s.minutes;
   }
-  const topTitle = Object.keys(byTask).sort((a, b) => byTask[b] - byTask[a])[0];
-  const matched  = topTitle ? (tasks || []).find(t => t.subjectId === subjectId && t.title === topTitle) : null;
+  const top = Object.keys(byTask).sort((a, b) => byTask[b] - byTask[a])[0];
+  const matched = !top ? null : top.startsWith("id:")
+    ? (tasks || []).find(t => t.id === top.slice(3))
+    : (tasks || []).find(t => t.subjectId === subjectId && t.title === top.slice(2));
 
   return { subjectId, taskId: matched ? String(matched.id) : defaultTaskId(tasks, subjectId) };
 }

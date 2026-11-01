@@ -270,7 +270,7 @@ export default function Settings({
           <Categoria titulo="" />
           <Fila titulo="Cerrar sesión" resumen="Tus datos locales no se borran." onPress={confirmSignOut} peligro />
 
-          <Text style={{ color: D.muted, fontSize: 11, textAlign: "center", marginTop: 20 }}>LixT v1.4.5</Text>
+          <Text style={{ color: D.muted, fontSize: 11, textAlign: "center", marginTop: 20 }}>LixT v1.5.0</Text>
         </ScrollView>
 
         {/* Diálogos de opciones */}
